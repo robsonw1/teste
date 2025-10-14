@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>🍕 Forneiro Éden - A pizza mais recheada da cidade</title>
+    <meta name="description" content="Cardápio digital do Forneiro Éden - A pizza mais recheada da cidade 🇮🇹. Faça seu pedido online com entrega rápida. Pizza meio a meio, bebidas e sobremesas deliciosas." />
+    <meta name="author" content="Lovable" />
+    
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="/manifest.json" />
+  <link rel="icon" href="/logotipoaezap.ico" />
+  <link rel="apple-touch-icon" href="/logotipoaezap.ico" />
+    <meta name="theme-color" content="#d4411e" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Forneiro Éden" />
+
+    <meta property="og:title" content="🍕 Forneiro Éden - A pizza mais recheada da cidade" />
+    <meta property="og:description" content="Cardápio digital do Forneiro Éden - A pizza mais recheada da cidade 🇮🇹. Faça seu pedido online com entrega rápida." />
+    <meta property="og:type" content="website" />
+    <meta property="og:image" content="/menu-preview.jpg" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:site" content="@lovable_dev" />
+    <meta name="twitter:image" content="/menu-preview.jpg" />
+  </head>
+
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+    
+    <!-- PWA Service Worker -->
+    <script>
+      // Improved SW registration with update handling
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js')
+            .then((registration) => {
+              console.log('SW registered: ', registration);
+
+              // Listen for updates
+              registration.addEventListener('updatefound', () => {
+                const newWorker = registration.installing;
+                if (!newWorker) return;
+                newWorker.addEventListener('statechange', () => {
+                  if (newWorker.state === 'installed') {
+                    // If there's an active worker, it means a new SW is available
+                    if (navigator.serviceWorker.controller) {
+                      // Ask the new SW to skipWaiting so it becomes active
+                      newWorker.postMessage('SKIP_WAITING');
+                      // Reload to let the new SW control the page and load fresh assets
+                      console.log('New SW installed, reloading to update assets');
+                      window.location.reload(true);
+                    }
+                  }
+                });
+              });
+            })
+            .catch((registrationError) => {
+              console.log('SW registration failed: ', registrationError);
+            });
+        });
+      }
+    </script>
+  </body>
+</html>

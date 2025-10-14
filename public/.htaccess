@@ -1,0 +1,26 @@
+# Rewrite everything to index.html for SPA routing
+# Place this file in the folder you upload to cPanel (public_html or the app directory)
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  # If your app is in a subdirectory, uncomment and set the correct base
+  # RewriteBase /
+
+  # Serve existing files directly
+  RewriteCond %{REQUEST_FILENAME} -f [OR]
+  RewriteCond %{REQUEST_FILENAME} -d
+  RewriteRule ^ - [L]
+
+  # Otherwise rewrite to index.html (SPA fallback)
+  RewriteRule ^ index.html [L]
+</IfModule>
+
+# Prevent directory listing
+Options -Indexes
+
+# Recommended headers for static assets
+<IfModule mod_headers.c>
+  <FilesMatch "\.(js|css|png|jpg|jpeg|gif|svg|webp|ico)$">
+    Header set Cache-Control "max-age=31536000, public"
+  </FilesMatch>
+</IfModule>
