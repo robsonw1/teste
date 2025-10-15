@@ -18,8 +18,13 @@ RUN npm ci
 COPY . .
 
 # Build do frontend (Vite)
+# Accept build args so Vite can inline the correct VITE_* values at build time
 ARG NODE_ENV=production
+ARG VITE_API_BASE=""
+ARG VITE_WS_URL=""
 ENV NODE_ENV=${NODE_ENV}
+ENV VITE_API_BASE=${VITE_API_BASE}
+ENV VITE_WS_URL=${VITE_WS_URL}
 RUN npm run build
 
 # Production stage: serve built files with a tiny http server
