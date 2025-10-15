@@ -41,7 +41,13 @@ self.addEventListener('fetch', (event) => {
       fetch(req)
         .then((networkResp) => {
           // update cache and return
-          caches.open(CACHE_NAME).then((cache) => cache.put(req, networkResp.clone()));
+          try {
+            const cloned = networkResp.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(req, cloned)).catch(() => {});
+          } catch (e) {
+            // cloning failed (body already used or opaque), ignore cache update
+            console.warn('SW: failed to clone response for caching', e);
+          }
           return networkResp;
         })
         .catch(() => caches.match(req).then((cached) => cached || caches.match('/')))
@@ -55,7 +61,12 @@ self.addEventListener('fetch', (event) => {
       const networkFetch = fetch(req).then((networkResp) => {
         // cache successful responses
         if (networkResp && networkResp.ok) {
-          caches.open(CACHE_NAME).then((cache) => cache.put(req, networkResp.clone()));
+          try {
+            const cloned = networkResp.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(req, cloned)).catch(() => {});
+          } catch (e) {
+            console.warn('SW: failed to clone response for caching', e);
+          }
         }
         return networkResp;
       }).catch(() => null);
