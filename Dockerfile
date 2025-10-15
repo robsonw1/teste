@@ -3,6 +3,11 @@ FROM node:18-alpine as builder
 
 WORKDIR /app
 
+# Build stage
+FROM node:18-alpine as builder
+
+WORKDIR /app
+
 # Copiar package files
 COPY package*.json ./
 
@@ -34,12 +39,3 @@ EXPOSE ${PORT}
 
 # Start server with chosen port
 CMD ["sh", "-c", "serve -s dist -l $PORT"]
-```
-
-**2. Adicione também um `.dockerignore`:**
-```
-node_modules
-.git
-.env
-dist
-*.log
