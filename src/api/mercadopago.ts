@@ -2,11 +2,35 @@
 // This file intentionally avoids importing the Mercado Pago SDK so it won't be bundled
 // into the browser build. The server (server/index.js) holds the SDK and credentials.
 
-// Prefer Vite runtime env for API base; fallback to relative paths
-// @ts-ignore
-const apiBase = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_BASE)
-  ? String(import.meta.env.VITE_API_BASE)
-  : '';
+// Runtime config strategy:
+// 1) Try to load /config.json (deployed and editable without rebuilding)
+// 2) Fallback to build-time `import.meta.env.VITE_API_BASE` (for normal Vite builds)
+
+let runtimeConfig: { VITE_API_BASE?: string; VITE_WS_URL?: string } | null = null;
+
+async function loadRuntimeConfig(): Promise<void> {
+  if (runtimeConfig !== null) return;
+  try {
+    const res = await fetch('/config.json', { cache: 'no-store' });
+    if (res.ok) {
+      runtimeConfig = await res.json();
+      return;
+    }
+  } catch (e) {
+    // ignore and fallback
+  }
+  // fallback to build-time env
+  // @ts-ignore
+  const buildApiBase = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_BASE) ? String(import.meta.env.VITE_API_BASE) : '';
+  // @ts-ignore
+  const buildWs = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_WS_URL) ? String(import.meta.env.VITE_WS_URL) : '';
+  runtimeConfig = { VITE_API_BASE: buildApiBase, VITE_WS_URL: buildWs };
+}
+
+function getApiBase(): string {
+  if (runtimeConfig && runtimeConfig.VITE_API_BASE) return runtimeConfig.VITE_API_BASE.replace(/\/$/, '');
+  return '';
+}
 
 export type GeneratePixResult = {
   qrCodeBase64?: string | null;
@@ -22,6 +46,8 @@ export type GeneratePixResult = {
 
 export async function generatePix(amount: number, orderId: string): Promise<GeneratePixResult> {
   try {
+    await loadRuntimeConfig();
+    const apiBase = getApiBase();
     const res = await fetch(`${apiBase}/api/generate-pix`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -61,6 +87,8 @@ export async function generatePix(amount: number, orderId: string): Promise<Gene
 
 export async function checkPaymentStatus(paymentId: string) {
   try {
+    await loadRuntimeConfig();
+    const apiBase = getApiBase();
     const res = await fetch(`${apiBase}/api/check-payment/${encodeURIComponent(paymentId)}`);
     if (!res.ok) {
       const txt = await res.text();
