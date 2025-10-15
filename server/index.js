@@ -228,6 +228,7 @@ async function mpCreatePayment(body, idempotencyKey) {
   return { status: res.status, data };
 }
 
+// Main endpoint: only POST is allowed to create PIX payments
 app.post('/api/generate-pix', async (req, res) => {
   try {
     // Suportar ambos os formatos de dados
@@ -498,6 +499,12 @@ app.get('/api/check-payment/:id', async (req, res) => {
   }
 });
 
+// Return helpful JSON for other HTTP methods on this path instead of HTML "Cannot GET" page
+app.all('/api/generate-pix', (req, res) => {
+  if (req.method === 'POST') return res.status(405).json({ error: 'Invalid method' });
+  return res.status(405).json({ error: 'Method Not Allowed', detail: 'Use POST on this endpoint to create a PIX payment' });
+});
+
 // New endpoint: check payment status by id (calls Mercado Pago)
 app.get('/status-pagamento/:id', async (req, res) => {
   try {
@@ -698,7 +705,7 @@ app.post('/criar-pagamento', createPaymentHandler);
 app.post('/api/criar-pagamento', createPaymentHandler);
 
 const port = process.env.PORT || 3000
-const host = process.env.HOST || '::' // listen on IPv6 any (will accept IPv4 on dual-stack systems)
+const host = process.env.HOST || '0.0.0.0' // listen on IPv6 any (will accept IPv4 on dual-stack systems)
 
 // Create HTTP server so we can attach WebSocket server to the same listener
 import http from 'http';

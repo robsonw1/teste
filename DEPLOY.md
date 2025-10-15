@@ -6,133 +6,86 @@ Production deployment checklist
    - WEBHOOK_SECRET (shared secret for webhook HMAC)
    - PRINT_WEBHOOK_URL (URL where to post order summaries when payment confirmed)
    - FRONTEND_ORIGIN (your frontend domain for CORS)
+# Deploy (Easy Panel) — guia simplificado e seguro
 
-2) Build frontend
-   ```markdown
-   Checklist para deploy em produção
+Este documento descreve como publicar o frontend e o backend no Easy Panel usando o repositório GitHub com Dockerfiles.
 
-   1) Preparar variáveis de ambiente (no provedor de hospedagem):
-      - MERCADO_PAGO_ACCESS_TOKEN (token de produção: APP_USR-...)
-      - MERCADO_PAGO_PUBLIC_KEY (opcional, chave pública para frontend)
-      - WEBHOOK_SECRET (segredo compartilhado para validação HMAC do webhook)
-      - PRINT_WEBHOOK_URL (URL para onde serão enviados resumos de pedido quando o pagamento for confirmado)
-      - FRONTEND_ORIGIN (domínio do frontend para CORS)
+Resumo das responsabilidades
+- Frontend: build Vite -> pasta `dist/`; pode ser servido como Static Site ou via Docker image.
+- Backend: servidor Node (Express) que expõe APIs e WebSocket; será empacotado em uma imagem Docker.
 
-   2) Build do frontend
-      - npm run build
-      - Envie a pasta `dist/` para Vercel/Netlify ou qualquer serviço de hospedagem estática
+Variáveis de ambiente necessárias (mínimo)
+- MERCADO_PAGO_ACCESS_TOKEN=APP_USR-... (obrigatório)
+- MP_ACCESS_TOKEN=... (opcional, compatibilidade)
+- WEBHOOK_SECRET=um-segredo-forte (recomendado para validar webhooks)
+- PRINT_WEBHOOK_URL=https://... (opcional)
+- FRONTEND_ORIGIN=https://seu-frontend (para CORS)
+- VITE_API_BASE=https://app-forneiro-eden-backend-atualizado.ilewqk.easypanel.host (definir no build do frontend)
+- VITE_WS_URL=wss://app-forneiro-eden-backend-atualizado.ilewqk.easypanel.host (definir no build do frontend)
 
-   3) Deploy do backend (exemplo: Render)
-      - Crie um novo Web Service
-      - Repo: aponte para este repositório
-      - Comando de build: nenhum (o servidor é Node simples)
-      - Comando de start: `node server/index.js`
-      - Environment: configure as variáveis do passo 1
-      - Garanta que o TLS (HTTPS) esteja habilitado e que você tenha uma URL pública
+Observações importantes sobre WebSocket (WSS)
+- O frontend será servido via HTTPS; use `wss://` para WebSocket. Garanta que o Easy Panel (proxy/ingress) suporte WebSocket upgrades e TLS termination.
 
-   4) Configurar webhook do Mercado Pago
-      - Defina a URL do webhook para https://<seu-backend>/api/webhook
-      - Defina o segredo do webhook para o mesmo valor de WEBHOOK_SECRET
-      - Teste via dashboard do Mercado Pago ou fazendo uma transação de teste
+Passo-a-passo (usar GitHub -> Easy Panel com Dockerfile)
 
-   5) Testes
-      - Crie um pedido no frontend -> PIX -> escaneie e pague
-      - Verifique se o backend recebe o webhook e encaminha o orderData para PRINT_WEBHOOK_URL
-      - Verifique se o frontend recebe a atualização via WebSocket
+1) Confirme Dockerfiles
+- Este repositório já contém Dockerfiles para frontend (root `Dockerfile`) e backend (`server/Dockerfile`). Eles usam a variável `PORT` e assumem que o backend escuta `process.env.PORT || 3000`.
 
-   6) Remover quaisquer flags SKIP ou DEV do código antes do deploy final.
-
-   Observações:
-   - Utilize um banco leve (Postgres) se quiser persistência mais robusta que o `payments.json` local.
-   - Não publique segredos. Use as variáveis de ambiente do provedor.
-
-Deploy no Easy Panel
---------------------
-
-Abaixo está um passo a passo específico para publicar tanto o front-end quanto o back-end neste repositório usando o Easy Panel (painel de hospedagem que suporta serviços Node e sites estáticos). Ajuste nomes de serviços, portas e variáveis conforme seu provedor.
-
-Pré-requisitos
-- Tenha acesso ao repositório (Git) e ao painel do Easy Panel.
-- Certifique-se de ter as variáveis sensíveis listadas acima (MERCADO_PAGO_ACCESS_TOKEN, WEBHOOK_SECRET, PRINT_WEBHOOK_URL, FRONTEND_ORIGIN, etc.).
-
-1) Build do Frontend (local ou CI)
-- No seu ambiente local ou pipeline CI, gere a pasta de build:
+2) Frontend: build e configuração de variáveis
+- Antes de buildar o frontend (local ou CI), defina as variáveis Vite necessárias. Exemplo (local):
 
 ```powershell
-# instalar dependências e gerar build
+# instalar dependencias e gerar build (local/CI)
 npm ci ; npm run build
 ```
 
-- Isso criará a pasta `dist/` (o Vite coloca o build padrão em `dist`).
-- Opções de publicação no Easy Panel:
-   - Publicar como site estático: crie um novo "Static Site" no Easy Panel e aponte o diretório de publicação para o conteúdo da pasta `dist/`. Faça upload via deploy automático do repositório (se suportado) ou usando o zip do `dist/`.
-   - Servir via backend Node: se quiser um único serviço que entregue o front e o API no mesmo domínio, pule a publicação estática e use o serviço Node descrito abaixo (servidor deve ser configurado para servir os arquivos de `dist/`).
+- Se você usar o Easy Panel para buildar a imagem direto do GitHub, defina a variável de ambiente `VITE_API_BASE` e `VITE_WS_URL` nas configurações de build do serviço (alguns painéis permitem definir ARG/ENV para build).
 
-2) Deploy do Backend (serviço Node no Easy Panel)
-- Crie um novo "Web Service" ou "Node Service" no Easy Panel e configure:
-   - Repo: aponte para este repositório (branch principal ou tag desejada).
-   - Build command: (opcional) `npm ci` dentro da pasta `server` — alguns painéis executam build na raiz; verifique as opções do Easy Panel.
-   - Start command: `node server/index.js` (ou `npm start` dentro de `server` se configurado).
-   - Port: o Easy Panel normalmente injeta a porta via `PORT` ou direciona tráfego para a porta 3000; verifique como o painel define a porta. Assegure que `server/index.js` usa `process.env.PORT || 3000`.
+3) Criar serviço no Easy Panel para o backend (imagem via Dockerfile do repositório)
+- No Easy Panel, crie um novo serviço do tipo Docker/GitHub-backed:
+  - Fonte: Github repo `robsonw100-don/teste` branch `main` (conforme screenshot enviada).
+  - Caminho do build: raiz (Dockerfile do frontend existente) — recomendar criar dois serviços separados: um para frontend (Static) e outro para backend (server/Dockerfile). Para backend aponte o Dockerfile para `server/Dockerfile`.
+  - Build args / Environment: defina as variáveis listadas acima (MERCADO_PAGO_ACCESS_TOKEN, WEBHOOK_SECRET, PRINT_WEBHOOK_URL, FRONTEND_ORIGIN).
+  - Port: 3000 (ou deixe em branco se o painel mapear automaticamente) — o servidor respeita `process.env.PORT`.
+  - Start command: não é necessário (a imagem Docker já tem CMD).
 
-- Variáveis de ambiente (exemplo mínimo a configurar no painel):
-   - MERCADO_PAGO_ACCESS_TOKEN=APP_USR-...
-   - MERCADO_PAGO_PUBLIC_KEY=...
-   - WEBHOOK_SECRET=um-segredo-forte
-   - PRINT_WEBHOOK_URL=https://exemplo.com/print
-   - FRONTEND_ORIGIN=https://seu-frontend
-   - VITE_WS_URL=wss://seu-backend (se aplicável)
+4) Criar serviço no Easy Panel para o frontend
+- Opcional: crie um Static Site (apontando para `dist/`) ou crie serviço Docker a partir do Dockerfile na raiz. Se usar Dockerfile na raiz, certifique-se de que a etapa de build do frontend roda corretamente no pipeline e que a imagem final serve a pasta `dist/` (o Dockerfile atualizado faz isso).
 
-- SSL/TLS: ative HTTPS no Easy Panel (geralmente automático com Let's Encrypt). Use o domínio fornecido pelo painel ou o seu domínio customizado.
+5) TLS / WSS
+- Ative HTTPS no Easy Panel para os domínios. Depois de pronto, ajuste `VITE_API_BASE` para usar `https://` e `VITE_WS_URL` para `wss://` (domínio do backend). Teste com `wscat -c wss://your-backend` para validar suporte a WebSocket upgrades.
 
-3) Servir `dist/` a partir do backend (opcional)
-- Se preferir que o backend entregue o frontend (mesmo domínio para Cookies/WebSocket), modifique `server/index.js` para servir arquivos estáticos de `../dist` (ou `dist` se você copiar o build para `server/dist`). Exemplo mínimo:
-
-- Workflow recomendado:
-   1. Gerar `dist/` via pipeline.
-   2. No momento do deploy, copie `dist/` para `server/dist` (ou ajuste o path no Express).
-   3. Start do serviço com `node server/index.js` que serve API + arquivos estáticos.
-
-4) WebSocket e CORS
-- Se o frontend e backend estiverem em domínios diferentes, configure `FRONTEND_ORIGIN` corretamente e ajuste CORS no servidor.
-- Para WebSocket, exponha `wss://` (TLS) ou `ws://` conforme suporte do painel. No Easy Panel, garanta que o serviço aceite conexões WebSocket (alguns painéis exigem configuração adicional ou usam um proxy que passa WS).
-
-5) Webhooks Mercado Pago
-- Configure a URL do webhook no painel do Mercado Pago para `https://<seu-domínio>/api/webhook`.
-- Use o mesmo `WEBHOOK_SECRET` configurado nas variáveis de ambiente para validar HMAC no servidor.
-
-6) Persistência e réplicas
-- O projeto atualmente usa `server/payments.json` para armazenar dados de pagamento. Em ambientes com múltiplas réplicas ou escalonamento, isso não é confiável.
-- Recomenda-se usar um banco (Postgres, MySQL) ou um armazenamento persistente provido pelo Easy Panel (ou volume persistente ligado ao serviço).
-
-7) Testes pós-deploy
-- No frontend: crie um pedido e inicie um pagamento PIX.
-- No backend: verifique logs do serviço para confirmar que os webhooks chegaram e que o servidor postou para `PRINT_WEBHOOK_URL`.
-- Verifique se o frontend recebeu atualizações via WebSocket.
-
-8) Notas de segurança
-- Nunca escreva tokens em código versionado. Use apenas variáveis de ambiente do painel.
-- Remova quaisquer flags `DEV`/`SKIP` antes de publicar.
-
-Exemplo básico de comandos para usar localmente antes de subir ao painel:
+6) Testes pós-deploy
+- Teste o endpoint diretamente com POST (exemplo PowerShell):
 
 ```powershell
-# build frontend
-npm ci ; npm run build
-
-# preparar server (copiar dist para server)
-Remove-Item -Recurse -Force server\dist -ErrorAction SilentlyContinue ;
-Copy-Item -Recurse -Force dist server\dist
-
-# executar localmente (para testar antes do deploy)
-cd server ; npm ci ; node index.js
+$body = @{ amount = 10; orderId = "TEST-123" } | ConvertTo-Json
+Invoke-RestMethod -Uri "https://app-forneiro-eden-backend-atualizado.ilewqk.easypanel.host/api/generate-pix" -Method POST -Body $body -ContentType "application/json"
 ```
 
-Próximos passos (opcionais que posso implementar):
-- Gerar um `Dockerfile` para o backend e/ou um `Dockerfile` multi-stage que cria o `dist` e serve tudo via Node/Express (útil se o Easy Panel aceitar imagens Docker).
-- Implementar no `server/index.js` o código para servir `server/dist` automaticamente (se preferir essa estratégia). 
+- Se o POST retornar JSON com qrCodeBase64/pixCopiaECola, o endpoint está funcionando.
+- Verifique também GET (esperado 405 JSON):
+
+```powershell
+Invoke-WebRequest -Uri "https://app-forneiro-eden-backend-atualizado.ilewqk.easypanel.host/api/generate-pix" -Method GET -UseBasicParsing
+```
+
+7) Webhook Mercado Pago
+- Configure no dashboard do Mercado Pago a URL `https://<seu-backend>/api/webhook` e o mesmo `WEBHOOK_SECRET`.
+
+8) Dicas operacionais
+- Se usar múltiplas réplicas, mova `payments.json` para um armazenamento compartilhado (DB ou volume persistente).
+- Monitore logs do serviço para mensagens de erro sobre Mercado Pago ou falhas de WebSocket.
+
+9) Problemas comuns e soluções rápidas
+- Recebe HTML "Cannot GET /api/generate-pix" no navegador: isso é normal para GET — o endpoint exige POST. Se o frontend recebe HTML ao fazer POST, verifique `VITE_API_BASE` (se estiver vazio, a requisição cai no host do frontend que serve HTML).
+- WebSocket bloqueado (Mixed Content): troque `ws://` por `wss://` e habilite TLS / WebSocket upgrades no painel.
+
+Se quiser, eu posso:
+- Adicionar um endpoint estático / healthcheck em `/healthz` que retorna JSON `{ok:true}` para facilitar o probe.
+- Instruir passo-a-passo com screenshots do Easy Panel (já vi que você tem acesso ao repo no painel).
 
 ---
 
-Fim da seção Easy Panel.
-   ```
+Fim.
+- Workflow recomendado:

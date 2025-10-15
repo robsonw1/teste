@@ -36,7 +36,27 @@ export function PixPaymentModal({ isOpen, onClose, total, orderId, orderData, on
     if (!isOpen) return
     let ws: WebSocket | null = null
     try {
-      const wsUrl = 'ws://app-forneiro-eden-backend.ilewqk.easypanel.host'
+      // Prefer environment variable (set at build/runtime)
+      // @ts-ignore
+      const envWs = typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_WS_URL ? String(import.meta.env.VITE_WS_URL) : ''
+
+      // If not provided, build a scheme-relative URL from current location and VITE_API_BASE
+      let wsUrl = envWs
+      if (!wsUrl) {
+        // If VITE_API_BASE is provided and it's absolute, prefer it
+        // @ts-ignore
+        const apiBase = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_BASE) ? String(import.meta.env.VITE_API_BASE) : ''
+        if (apiBase) {
+          // convert https://host to wss://host and http://host to ws://host
+          wsUrl = apiBase.replace(/^https?:\/\//i, (m) => m.toLowerCase().startsWith('https') ? 'wss://' : 'ws://').replace(/\/$/, '')
+        } else {
+          // fallback to same host as current page using appropriate ws scheme
+          const loc = window.location
+          const scheme = loc.protocol === 'https:' ? 'wss:' : 'ws:'
+          wsUrl = `${scheme}//${loc.host}`
+        }
+      }
+
       ws = new WebSocket(wsUrl)
       ws.addEventListener('open', () => console.log('WS connected for Pix updates'))
       ws.addEventListener('message', (evt) => {
