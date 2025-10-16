@@ -38,6 +38,19 @@ app.use(cors(corsOptions));
 // Ensure preflight requests are handled globally
 app.options('*', cors(corsOptions));
 
+// Explicitly handle OPTIONS preflight for /api/* early to ensure required CORS headers
+app.use('/api', (req, res, next) => {
+  if (req.method === 'OPTIONS') {
+    const originHeader = req.headers && req.headers.origin ? String(req.headers.origin) : (FRONTEND_ORIGIN || '*');
+    res.setHeader('Access-Control-Allow-Origin', originHeader);
+    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization,x-idempotency-key,x-hub-signature-256,x-hub-signature,x-signature,x-driven-signature,x-admin-token');
+    res.setHeader('Vary', 'Origin');
+    return res.sendStatus(204);
+  }
+  return next();
+});
+
 // Safety: ensure API responses always have CORS header (fallback)
 app.use((req, res, next) => {
   try {
