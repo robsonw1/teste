@@ -87,10 +87,6 @@ const PizzaCustomizationModal = ({ isOpen, onClose, pizza, onAddToCart, preSelec
   }, [isOpen, allowedPizzaCategories]);
 
   if (!pizza) return null;
-
-  // Special rule: 'Moda do Cliente' allows up to 6 free adicionais
-  const isModaCliente = pizza.id === 'pizza-moda-cliente';
-  const MAX_MODA_ADICIONAIS = 6;
   // Filtra apenas pizzas para os selects de sabores, considerando categorias permitidas
   const pizzaOptions = products.filter(p => {
     const isPizza = p.category.includes('pizzas');
@@ -127,27 +123,13 @@ const PizzaCustomizationModal = ({ isOpen, onClose, pizza, onAddToCart, preSelec
     })
   ];
 
-  // Filtra adicionais do cardápio
+  // Filtra adicionais do cardápio 
   const adicionaisProducts = products.filter(p => p.category === 'adicionais');
-
-  // Ingredientes que não devem aparecer como opção na "Moda do Cliente"
-  const EXCLUDED_MODA_INGREDIENTS = ['costela', 'pernil', 'carne seca', 'cupim'];
-
-
-  let adicionaisOptions = adicionaisProducts.map(adicional => ({
+  const adicionaisOptions = adicionaisProducts.map(adicional => ({
     id: adicional.id,
     name: adicional.name,
     price: adicional.price.grande
   }));
-
-  // Se for Moda do Cliente, remove itens indesejados (por nome)
-  if (isModaCliente) {
-    adicionaisOptions = adicionaisOptions.filter(opt => {
-      const lower = (opt.name || '').toLowerCase();
-      // Exclude if the name contains any of the forbidden substrings
-      return !EXCLUDED_MODA_INGREDIENTS.some(ex => lower.includes(ex));
-    });
-  }
 
   // Filtra bebidas do cardápio e adiciona a opção 'Sem Bebida' gratuita
   const bebidasProducts = products.filter(p => p.category === 'bebidas');
@@ -160,7 +142,9 @@ const PizzaCustomizationModal = ({ isOpen, onClose, pizza, onAddToCart, preSelec
     }))
   ];
 
-  
+  // Special rule: 'Moda do Cliente' allows up to 6 free adicionais
+  const isModaCliente = pizza.id === 'pizza-moda-cliente';
+  const MAX_MODA_ADICIONAIS = 6;
 
   const calculateTotal = () => {
     let basePrice = pizza.price[size];
@@ -196,13 +180,11 @@ const PizzaCustomizationModal = ({ isOpen, onClose, pizza, onAddToCart, preSelec
       }
     }
     
-    // Adicionar preço dos adicionais (se não for Moda do Cliente — nesses casos são grátis)
+    // Adicionar preço dos adicionais
     adicionais.forEach(adicional => {
       const adicionalOption = adicionaisOptions.find(a => a.id === adicional);
       if (adicionalOption) {
-        if (!isModaCliente) {
-          total += adicionalOption.price;
-        }
+        total += adicionalOption.price;
       }
     });
     // Adicionar preço da bebida opcional (se selecionada e diferente de 'sem-bebida')
@@ -327,52 +309,91 @@ const PizzaCustomizationModal = ({ isOpen, onClose, pizza, onAddToCart, preSelec
             </div>
           )}
           <DialogHeader>
-          <DialogTitle className="text-2xl font-bold">
-            Personalizar {pizza.name}
-          </DialogTitle>
-          <p id="pizza-description" className="text-muted-foreground">
-            {pizza.description}
-          </p>
-        </DialogHeader>
+            <DialogTitle className="text-2xl font-bold">
+              Personalizar {pizza.name}
+            </DialogTitle>
+            <p id="pizza-description" className="text-muted-foreground">
+              {pizza.description}
+            </p>
+          </DialogHeader>
 
-        {/* Tipo de Pizza */}
-        <div className="space-y-4">
-          <h3 className="text-lg font-semibold">Escolha o Tipo</h3>
-          <RadioGroup 
-            value={pizzaType} 
-            onValueChange={(value: 'inteira' | 'meia-meia') => {
-              setPizzaType(value);
-              // Reset sabores quando trocar de tipo
-              if (value === 'inteira') {
-                setSabor1('');
-                setSabor2('');
-              }
-              // Se mudou para meia-meia e tem pizza pré-selecionada, definir como sabor1
-              if (value === 'meia-meia' && preSelectedPizza) {
-                setSabor1(preSelectedPizza);
-              }
-            }}
-          >
-            <div className="flex items-center space-x-2 p-3 border rounded-lg">
-              <RadioGroupItem value="inteira" id="inteira" />
-              <Label htmlFor="inteira" className="flex-1 cursor-pointer">
-                <div className="font-medium">Pizza Inteira</div>
-                <div className="text-sm text-muted-foreground">Um sabor para toda a pizza</div>
-              </Label>
+          {/* Tamanho - Apenas se não for combo ou se for combo sem restrição de broto */}
+          {!allowedPizzaCategories?.includes('pizzas-promocionais') && (
+            <div className="space-y-4">
+              <h3 className="text-lg font-semibold">Escolha o Tamanho</h3>
+              <RadioGroup value={size} onValueChange={(value: 'broto' | 'grande') => {
+                const previousSize = size;
+                setSize(value);
+                // Se mudou para broto e estava em meia-meia, volta para inteira
+                if (value === 'broto' && pizzaType === 'meia-meia') {
+                  setPizzaType('inteira');
+                  setSabor1('');
+                  setSabor2('');
+                }
+                // Reset bordas e adicionais para recalcular preços
+                if (previousSize !== value) {
+                  setBorda('sem-borda');
+                  setAdicionais([]);
+                }
+              }}>
+                {sizeOptions.map((option) => (
+                  <div key={option.id} className="flex items-center space-x-2 p-3 border rounded-lg">
+                    <RadioGroupItem value={option.id} id={option.id} />
+                    <Label htmlFor={option.id} className="flex-1 cursor-pointer">
+                      <div className="flex justify-between items-center">
+                        <div>
+                          <div className="font-medium">{option.name}</div>
+                          <div className="text-sm text-muted-foreground">{option.description}</div>
+                        </div>
+                        <div className="font-bold text-brand-red">
+                          R$ {option.price.toFixed(2).replace('.', ',')}
+                        </div>
+                      </div>
+                    </Label>
+                  </div>
+                ))}
+              </RadioGroup>
             </div>
-            {/* Só mostra opção meia-meia se não for broto */}
-            {size !== 'broto' && (
+          )}
+
+          {/* Tipo de Pizza */}
+          <div className="space-y-4">
+            <h3 className="text-lg font-semibold">Escolha o Tipo</h3>
+            <RadioGroup 
+              value={pizzaType} 
+              onValueChange={(value: 'inteira' | 'meia-meia') => {
+                setPizzaType(value);
+                // Reset sabores quando trocar de tipo
+                if (value === 'inteira') {
+                  setSabor1('');
+                  setSabor2('');
+                }
+                // Se mudou para meia-meia e tem pizza pré-selecionada, definir como sabor1
+                if (value === 'meia-meia' && preSelectedPizza) {
+                  setSabor1(preSelectedPizza);
+                }
+              }}
+            >
               <div className="flex items-center space-x-2 p-3 border rounded-lg">
-                <RadioGroupItem value="meia-meia" id="meia-meia" />
-                <Label htmlFor="meia-meia" className="flex-1 cursor-pointer">
-                  <div className="font-medium">Meia a Meia</div>
-                  <div className="text-sm text-muted-foreground">Dois sabores na mesma pizza</div>
-                  <div className="text-xs text-brand-red">Preço do sabor mais caro</div>
+                <RadioGroupItem value="inteira" id="inteira" />
+                <Label htmlFor="inteira" className="flex-1 cursor-pointer">
+                  <div className="font-medium">Pizza Inteira</div>
+                  <div className="text-sm text-muted-foreground">Um sabor para toda a pizza</div>
                 </Label>
               </div>
-            )}
-          </RadioGroup>
-        </div>
+              {/* Só mostra opção meia-meia se não for broto */}
+              {size !== 'broto' && (
+                <div className="flex items-center space-x-2 p-3 border rounded-lg">
+                  <RadioGroupItem value="meia-meia" id="meia-meia" />
+                  <Label htmlFor="meia-meia" className="flex-1 cursor-pointer">
+                    <div className="font-medium">Meia a Meia</div>
+                    <div className="text-sm text-muted-foreground">Dois sabores na mesma pizza</div>
+                    <div className="text-xs text-brand-red">Preço do sabor mais caro</div>
+                  </Label>
+                </div>
+              )}
+            </RadioGroup>
+          </div>
 
         {/* Seleção de Sabor para Pizza Inteira nos Combos */}
         {pizzaType === 'inteira' && allowedPizzaCategories && allowedPizzaCategories.includes('pizzas-promocionais') && (
@@ -465,49 +486,6 @@ const PizzaCustomizationModal = ({ isOpen, onClose, pizza, onAddToCart, preSelec
 
         <Separator />
 
-        {/* Tamanho - Apenas se não for combo ou se for combo sem restrição de broto */}
-        {!allowedPizzaCategories?.includes('pizzas-promocionais') && (
-          <div className="space-y-4">
-            <h3 className="text-lg font-semibold">Escolha o Tamanho</h3>
-            <RadioGroup value={size} onValueChange={(value: 'broto' | 'grande') => {
-              const previousSize = size;
-              setSize(value);
-              // Se mudou para broto e estava em meia-meia, volta para inteira
-              if (value === 'broto' && pizzaType === 'meia-meia') {
-                setPizzaType('inteira');
-                setSabor1('');
-                setSabor2('');
-              }
-              // Reset bordas e adicionais para recalcular preços
-              if (previousSize !== value) {
-                setBorda('sem-borda');
-                setAdicionais([]);
-              }
-            }}>
-              {sizeOptions.map((option) => (
-                <div key={option.id} className="flex items-center space-x-2 p-3 border rounded-lg">
-                  <RadioGroupItem value={option.id} id={option.id} />
-                  <Label htmlFor={option.id} className="flex-1 cursor-pointer">
-                    <div className="flex justify-between items-center">
-                      <div>
-                        <div className="font-medium">{option.name}</div>
-                        <div className="text-sm text-muted-foreground">{option.description}</div>
-                      </div>
-                      <div className="font-bold text-brand-red">
-                        R$ {option.price.toFixed(2).replace('.', ',')}
-                      </div>
-                    </div>
-                  </Label>
-                </div>
-              ))}
-            </RadioGroup>
-          </div>
-        )}
-
-        {/* Para combos, garantir que o tamanho seja grande por padrão. Use useEffect para não chamar setState durante a renderização. */}
-
-        <Separator />
-
   {/* Bebidas (Opcional) */}
   <div ref={bebidasRef} className="space-y-4">
           <h3 className="text-lg font-semibold">Bebidas (Opcional)</h3>
@@ -553,7 +531,7 @@ const PizzaCustomizationModal = ({ isOpen, onClose, pizza, onAddToCart, preSelec
   {/* Adicionais */}
   <div ref={adicionaisRef} className="space-y-4">
           <div className="flex items-center justify-between">
-            <h3 className="text-lg font-semibold">{isModaCliente ? 'Escolha até 6 adicionais grátis' : 'Adicionais'}</h3>
+            <h3 className="text-lg font-semibold">Adicionais</h3>
             {isModaCliente && (
               <div className="text-sm text-muted-foreground">{adicionais.length}/{MAX_MODA_ADICIONAIS} selecionados</div>
             )}
@@ -574,7 +552,7 @@ const PizzaCustomizationModal = ({ isOpen, onClose, pizza, onAddToCart, preSelec
                     <div className="flex justify-between items-center">
                       <div className="font-medium text-sm">{option.name}</div>
                       <div className="font-bold text-brand-red text-sm">
-                        {isModaCliente ? 'Grátis' : `+ R$ ${option.price.toFixed(2).replace('.', ',')}`}
+                        + R$ {option.price.toFixed(2).replace('.', ',')}
                       </div>
                     </div>
                   </Label>
