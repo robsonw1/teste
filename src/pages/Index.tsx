@@ -48,6 +48,15 @@ const Index = () => {
   const [activeCategory, setActiveCategory] = useState('pizzas-promocionais');
   const [isComboContext, setIsComboContext] = useState(false); // Para rastrear se é contexto de combo
   const { items, addToCart, updateQuantity, removeItem, getTotalItems, getTotalPrice } = useCart();
+
+  // Wrap addToCart so the cart drawer opens automatically when an item is added
+  const handleAddToCart = (...args: Parameters<typeof addToCart>) => {
+    // Call original addToCart
+    // @ts-ignore - Parameters typing may be complex, but forwarding args is fine here
+    addToCart(...args);
+    // Open cart drawer
+    setIsCartOpen(true);
+  };
   const { products } = useProducts();
   const { settings } = useEstablishment();
 
@@ -199,7 +208,7 @@ const Index = () => {
 
         {/* Mobile Accordion Menu */}
         <MobileMenuAccordion 
-            onAddToCart={addToCart}
+          onAddToCart={handleAddToCart}
             onPizzaClick={handlePizzaClick}
             onHalfPizzaClick={handleHalfPizzaClick}
             updateProductImages={updateProductImages}
@@ -214,10 +223,10 @@ const Index = () => {
             
             return (
               <div key={category.id} id={category.id}>
-                <CategorySection
+                  <CategorySection
                   title={category.name}
                   products={categoryProducts}
-                  onAddToCart={addToCart}
+                  onAddToCart={handleAddToCart}
                   onPizzaClick={handlePizzaClick}
                   onHalfPizzaClick={handleHalfPizzaClick}
                   cartItems={items}
@@ -289,7 +298,7 @@ const Index = () => {
         }
         isComboContext={isComboContext}
         combo={selectedCombo}
-        onAddToCart={addToCart}
+        onAddToCart={handleAddToCart}
         preSelectedFlavor={preSelectedPizzaForHalf}
       />
 
@@ -302,7 +311,7 @@ const Index = () => {
           setIsComboContext(false);
         }}
         pizza={selectedPizza}
-        onAddToCart={addToCart}
+  onAddToCart={handleAddToCart}
         preSelectedPizza={preSelectedPizzaForCustomization}
         allowedPizzaCategories={isComboContext 
           ? ['pizzas-promocionais'] 
@@ -318,7 +327,7 @@ const Index = () => {
           setSelectedCombo(null);
         }}
         combo={selectedCombo}
-        onAddToCart={addToCart}
+        onAddToCart={handleAddToCart}
       />
 
       {/* PWA Install Prompt */}
