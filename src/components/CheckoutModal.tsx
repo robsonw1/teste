@@ -217,7 +217,7 @@ const CheckoutModal = ({ isOpen, onClose, items, subtotal, onOrderComplete }: Ch
       // @ts-ignore
       const printWebhook = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_PRINT_WEBHOOK_URL)
         ? String(import.meta.env.VITE_PRINT_WEBHOOK_URL)
-        : 'https://c623be95032e.ngrok-free.app/webhook/impressão';
+        : '';
 
       await fetch(printWebhook, {
         method: 'POST',
