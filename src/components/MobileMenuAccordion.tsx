@@ -25,6 +25,8 @@ interface MobileMenuAccordionProps {
   onHalfPizzaClick?: (pizzaId: string) => void;
   updateProductImages: (products: Product[]) => Product[];
   cartItems?: CartItem[];
+  openCategories: string[];
+  setOpenCategories: (categories: string[]) => void;
 }
 
 const MobileMenuAccordion = ({ 
@@ -32,9 +34,10 @@ const MobileMenuAccordion = ({
   onPizzaClick, 
   onHalfPizzaClick, 
   updateProductImages,
-  cartItems
+  cartItems,
+  openCategories,
+  setOpenCategories
 }: MobileMenuAccordionProps) => {
-  const [openCategories, setOpenCategories] = useState<string[]>(['pizzas-promocionais']);
   const { products } = useProducts();
 
   return (
@@ -45,7 +48,7 @@ const MobileMenuAccordion = ({
           if (categoryProducts.length === 0) return null;
           
           return (
-            <AccordionItem key={category.id} value={category.id} className="border-none">
+            <AccordionItem key={category.id} value={category.id} className="border-none" id={category.id}>
               <AccordionTrigger className="bg-white/50 backdrop-blur-sm rounded-lg px-4 py-3 mb-2 hover:bg-white/70 transition-all">
                 <div className="flex items-center gap-3 text-left">
                   <span className="text-2xl">{category.icon}</span>
