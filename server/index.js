@@ -83,7 +83,9 @@ app.use((req, res, next) => {
   return next();
 });
 
+// Parse JSON and URL-encoded bodies so the endpoint accepts both
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 // Redirect HTTP to HTTPS in production when behind a proxy/load-balancer
 app.set('trust proxy', true);
