@@ -141,7 +141,7 @@ const Cart = ({ isOpen, onClose, items, onUpdateQuantity, onRemoveItem, onChecko
               variant="outline"
               className="flex-1"
             >
-              Continuar
+              Adicionar +itens
             </Button>
             <Button 
               onClick={onCheckout}
