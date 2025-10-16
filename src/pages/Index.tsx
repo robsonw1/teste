@@ -46,6 +46,7 @@ const Index = () => {
   const [preSelectedPizzaForHalf, setPreSelectedPizzaForHalf] = useState(null);
   const [preSelectedPizzaForCustomization, setPreSelectedPizzaForCustomization] = useState(null);
   const [activeCategory, setActiveCategory] = useState('pizzas-promocionais');
+  const [openCategories, setOpenCategories] = useState<string[]>(['pizzas-promocionais']);
   const [isComboContext, setIsComboContext] = useState(false); // Para rastrear se é contexto de combo
   const { items, addToCart, updateQuantity, removeItem, getTotalItems, getTotalPrice } = useCart();
 
@@ -140,9 +141,20 @@ const Index = () => {
 
   const scrollToCategory = (categoryId: string) => {
     setActiveCategory(categoryId);
-    const element = document.getElementById(categoryId);
-    if (element) {
-      element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    // No mobile, abrir apenas o menu selecionado e rolar para o topo do menu
+    if (window.innerWidth < 768) {
+      setOpenCategories([categoryId]);
+      setTimeout(() => {
+        const accordionItem = document.getElementById(categoryId);
+        if (accordionItem) {
+          accordionItem.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 120); // pequeno delay para garantir que o menu abriu
+    } else {
+      const element = document.getElementById(categoryId);
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
     }
   };
 
@@ -182,20 +194,68 @@ const Index = () => {
 
       {/* Menu Navigation */}
       <section className="sticky top-20 z-40 bg-surface/95 backdrop-blur-sm border-b shadow-sm">
-        <div className="container mx-auto px-4 py-4">
-          <nav className="flex space-x-4 overflow-x-auto">
+        <div className="container mx-auto px-4 py-4 relative">
+          {/* Dica de rolagem lateral (aparece só no mobile e some após 2s ou ao rolar) */}
+          <div
+            id="menu-scroll-hint"
+            className="absolute left-2 top-1/2 -translate-y-1/2 z-50 flex items-center pointer-events-none md:hidden animate-fade-right"
+            style={{ transition: 'opacity 0.5s', opacity: 1 }}
+          >
+            <div className="bg-black/60 text-white px-2 py-1 rounded flex items-center text-xs shadow">
+              <svg className="mr-1 animate-bounce-x" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+              Arraste para o lado
+            </div>
+          </div>
+          <nav
+            className="flex space-x-4 overflow-x-auto scrollbar-hide scroll-smooth snap-x"
+            style={{ WebkitOverflowScrolling: 'touch' }}
+            onScroll={() => {
+              const hint = document.getElementById('menu-scroll-hint');
+              if (hint) hint.style.opacity = '0';
+            }}
+          >
             {categories.map((category) => (
               <Button
                 key={category.id}
                 variant={activeCategory === category.id ? "default" : "ghost"}
-                className="whitespace-nowrap text-foreground hover:text-brand-orange"
-                onClick={() => scrollToCategory(category.id)}
+                className="whitespace-nowrap text-foreground hover:text-brand-orange snap-start"
+                onClick={() => {
+                  scrollToCategory(category.id);
+                  // Rola o menu horizontalmente até o botão clicado (mobile)
+                  const btn = document.getElementById(`menu-btn-${category.id}`);
+                  if (btn && window.innerWidth < 768) {
+                    btn.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+                  }
+                }}
+                id={`menu-btn-${category.id}`}
               >
                 {category.icon} {category.name}
               </Button>
             ))}
           </nav>
         </div>
+        <style>{`
+          @keyframes bounce-x {
+            0%, 100% { transform: translateX(0); }
+            50% { transform: translateX(12px); }
+          }
+          .animate-bounce-x { animation: bounce-x 1.2s infinite; }
+          .animate-fade-right { animation: fadeRight 1.2s 1; }
+          @keyframes fadeRight {
+            0% { opacity: 0; transform: translateX(-16px); }
+            100% { opacity: 1; transform: translateX(0); }
+          }
+          .scrollbar-hide::-webkit-scrollbar { display: none; }
+          .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+        `}</style>
+        <script dangerouslySetInnerHTML={{
+          __html: `
+            setTimeout(function() {
+              var hint = document.getElementById('menu-scroll-hint');
+              if (hint) hint.style.opacity = '0';
+            }, 2200);
+          `
+        }} />
       </section>
 
       {/* Menu Content */}
@@ -209,10 +269,12 @@ const Index = () => {
         {/* Mobile Accordion Menu */}
         <MobileMenuAccordion 
           onAddToCart={handleAddToCart}
-            onPizzaClick={handlePizzaClick}
-            onHalfPizzaClick={handleHalfPizzaClick}
-            updateProductImages={updateProductImages}
-            cartItems={items}
+          onPizzaClick={handlePizzaClick}
+          onHalfPizzaClick={handleHalfPizzaClick}
+          updateProductImages={updateProductImages}
+          cartItems={items}
+          openCategories={openCategories}
+          setOpenCategories={setOpenCategories}
         />
 
         {/* Desktop Menu (hidden on mobile) */}
