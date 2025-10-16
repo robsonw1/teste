@@ -523,17 +523,44 @@ app.post('/api/generate-pix', async (req, res) => {
       
     } catch (sdkErr) {
       console.error('Mercado Pago SDK create error', sdkErr && sdkErr.message ? sdkErr.message : sdkErr);
-      
+
+      const sdkMsg = String((sdkErr && sdkErr.message) || sdkErr || '').toLowerCase();
+
+      // If SDK reports account not enabled for PIX QR rendering, provide a clear message
+      if (sdkMsg.includes('collector user') && sdkMsg.includes('key') && sdkMsg.includes('qr')) {
+        // Optional local fallback for testing: set ENABLE_LOCAL_PIX_FALLBACK=1 in env to allow local QR generation
+        if (process.env.ENABLE_LOCAL_PIX_FALLBACK === '1') {
+          console.log('ENABLE_LOCAL_PIX_FALLBACK is set — generating local PIX QR as fallback');
+          try {
+            const pix = `00020126360014BR.GOV.BCB.PIX01${String(orderId).slice(-14)}520400005303986540${String(paymentData.transaction_amount).replace('.','')}5802BR5925Empresa6009Cidade6108${String(Date.now()).slice(-8)}62070503***6304ABCD`;
+            const qrPng = await QRCode.toDataURL(pix, { width: 300 });
+            const devId = `DEV-${Date.now()}`;
+            simulatedPayments.set(devId, { status: 'pending', createdAt: Date.now() });
+            try { await savePaymentRecord(devId, { id: devId, orderId, amount, status: 'pending', createdAt: new Date().toISOString(), dev: true, fallback: true }); } catch(e){}
+            return res.json({ qrCodeBase64: qrPng.replace(/^data:image\/png;base64,/, ''), pixCopiaECola: pix, paymentId: devId, fallback: true });
+          } catch (e) {
+            console.warn('Local PIX fallback failed', e);
+            return res.status(500).json({ error: 'Local PIX fallback failed', detail: String(e) });
+          }
+        }
+
+        return res.status(400).json({
+          error: 'Mercado Pago configuration error',
+          detail: 'Collector account is not enabled for PIX QR generation. Enable PIX keys / QR for your Mercado Pago account. See: https://www.mercadopago[.]com.br/developers/pt/guides/online-payments/pix/overview'
+        });
+      }
+
       if (String(sdkErr).toLowerCase().includes('unauthorized') || (sdkErr && sdkErr.status === 401)) {
         return res.status(401).json({ error: 'Unauthorized', detail: 'Check your MERCADO_PAGO_ACCESS_TOKEN and environment (live vs test credentials).' });
       }
-      
+
       // Fallback: try REST endpoint
       const body = Object.assign({}, paymentData, { external_reference: orderId });
       const { status, data } = await mpCreatePayment(body, idempotencyKey);
       console.log('MP fallback create status', status, 'data keys:', Object.keys(data));
-      
+
       if (status >= 400) {
+        // Provide more helpful error detail when Mercado Pago REST returns an error
         return res.status(status).json({ error: 'Mercado Pago error', detail: data });
       }
       
