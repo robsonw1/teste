@@ -15,17 +15,37 @@ dotenv.config();
 const app = express();
 
 // Enforce FRONTEND_ORIGIN in production (do not allow wildcard)
-const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || (process.env.NODE_ENV === 'production' ? null : '*');
+let FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || (process.env.NODE_ENV === 'production' ? null : '*');
+// normalize value (remove trailing slash)
+if (FRONTEND_ORIGIN) FRONTEND_ORIGIN = String(FRONTEND_ORIGIN).replace(/\/$/, '');
 if (!FRONTEND_ORIGIN && process.env.NODE_ENV === 'production') {
   console.error('FRONTEND_ORIGIN must be set in production to restrict CORS. Aborting.');
   process.exit(1);
 }
 
-app.use(cors({
+const corsOptions = {
   origin: FRONTEND_ORIGIN,
   methods: ['GET','POST','OPTIONS'],
-  allowedHeaders: ['Content-Type','Authorization','x-idempotency-key','x-hub-signature-256','x-hub-signature','x-signature','x-driven-signature','x-admin-token']
-}));
+  allowedHeaders: ['Content-Type','Authorization','x-idempotency-key','x-hub-signature-256','x-hub-signature','x-signature','x-driven-signature','x-admin-token'],
+  optionsSuccessStatus: 204
+};
+
+app.use(cors(corsOptions));
+// Ensure preflight requests are handled globally
+app.options('*', cors(corsOptions));
+
+// Safety: ensure API responses always have CORS header (fallback)
+app.use((req, res, next) => {
+  try {
+    const hdr = res.getHeader && res.getHeader('Access-Control-Allow-Origin');
+    if (!hdr) {
+      res.setHeader('Access-Control-Allow-Origin', FRONTEND_ORIGIN || '*');
+      res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization,x-idempotency-key,x-hub-signature-256,x-hub-signature,x-signature,x-driven-signature,x-admin-token');
+    }
+  } catch (e) { /* ignore */ }
+  return next();
+});
 
 app.use(express.json());
 
