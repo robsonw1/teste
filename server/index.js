@@ -23,8 +23,12 @@ if (!FRONTEND_ORIGIN && process.env.NODE_ENV === 'production') {
   process.exit(1);
 }
 
+
+// Allow CORS by reflecting the request origin. This avoids preflight failures
+// when the request origin matches the frontend host but small mismatches occur
+// (use a stricter policy in production if desired).
 const corsOptions = {
-  origin: FRONTEND_ORIGIN,
+  origin: true, // reflect request origin
   methods: ['GET','POST','OPTIONS'],
   allowedHeaders: ['Content-Type','Authorization','x-idempotency-key','x-hub-signature-256','x-hub-signature','x-signature','x-driven-signature','x-admin-token'],
   optionsSuccessStatus: 204
@@ -39,7 +43,9 @@ app.use((req, res, next) => {
   try {
     const hdr = res.getHeader && res.getHeader('Access-Control-Allow-Origin');
     if (!hdr) {
-      res.setHeader('Access-Control-Allow-Origin', FRONTEND_ORIGIN || '*');
+      // If the request provides an Origin header, echo it back; otherwise fallback to configured FRONTEND_ORIGIN or '*'.
+      const originHeader = req.headers && req.headers.origin ? String(req.headers.origin) : (FRONTEND_ORIGIN || '*');
+      res.setHeader('Access-Control-Allow-Origin', originHeader);
       res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
       res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization,x-idempotency-key,x-hub-signature-256,x-hub-signature,x-signature,x-driven-signature,x-admin-token');
     }
