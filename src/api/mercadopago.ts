@@ -48,10 +48,14 @@ export async function generatePix(amount: number, orderId: string): Promise<Gene
   try {
     await loadRuntimeConfig();
     const apiBase = getApiBase();
+    // Use application/x-www-form-urlencoded to avoid CORS preflight in many cases
+    const params = new URLSearchParams();
+    params.set('amount', String(amount));
+    params.set('orderId', String(orderId));
     const res = await fetch(`${apiBase}/api/generate-pix`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ amount, orderId })
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params.toString()
     });
 
     if (!res.ok) {
