@@ -25,6 +25,22 @@ app.use((req, res, next) => {
   return next();
 });
 
+// EARLY CORS: set CORS headers and short-circuit OPTIONS before any other middleware.
+// This is intentionally aggressive to ensure preflight requests are answered even
+// when proxies or later middleware might interfere. In production you can tighten
+// this by setting FRONTEND_ORIGIN to a specific origin.
+app.use((req, res, next) => {
+  try {
+    const originHeader = req.headers && req.headers.origin ? String(req.headers.origin) : (FRONTEND_ORIGIN || '*');
+    res.setHeader('Access-Control-Allow-Origin', originHeader);
+    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization,x-idempotency-key,x-hub-signature-256,x-hub-signature,x-signature,x-driven-signature,x-admin-token');
+    res.setHeader('Vary', 'Origin');
+    if (req.method === 'OPTIONS') return res.sendStatus(204);
+  } catch (e) { /* ignore */ }
+  return next();
+});
+
 // Enforce FRONTEND_ORIGIN in production (do not allow wildcard)
 let FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || (process.env.NODE_ENV === 'production' ? null : '*');
 // normalize value (remove trailing slash)
