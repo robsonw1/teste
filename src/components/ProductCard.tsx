@@ -17,6 +17,7 @@ interface ProductCardProps {
   portions?: string;
   drinkOptions?: string[];
   pizzaCount?: number;
+  cartQuantity?: number;
   onAddToCart: (productId: string, quantity: number) => void;
   onPizzaClick?: (pizzaId: string, preSelectedPizza?: string) => void;
   onHalfPizzaClick?: (pizzaId: string) => void;
