@@ -38,6 +38,23 @@ app.use(cors(corsOptions));
 // Ensure preflight requests are handled globally
 app.options('*', cors(corsOptions));
 
+// Explicitly handle OPTIONS preflight for the specific PIX endpoint to be
+// 100% sure a preflight receives CORS headers (some proxies may intercept
+// OPTIONS for other paths). This should run before any redirect middleware.
+app.options('/api/generate-pix', (req, res) => {
+  try {
+    const originHeader = req.headers && req.headers.origin ? String(req.headers.origin) : (FRONTEND_ORIGIN || '*');
+    console.log('Received preflight OPTIONS for /api/generate-pix from', originHeader);
+    res.setHeader('Access-Control-Allow-Origin', originHeader);
+    res.setHeader('Access-Control-Allow-Methods', 'POST,OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization,x-idempotency-key,x-hub-signature-256,x-hub-signature,x-signature,x-driven-signature,x-admin-token');
+    res.setHeader('Vary', 'Origin');
+    return res.sendStatus(204);
+  } catch (e) {
+    return res.sendStatus(204);
+  }
+});
+
 // Explicitly handle OPTIONS preflight for /api/* early to ensure required CORS headers
 app.use('/api', (req, res, next) => {
   if (req.method === 'OPTIONS') {
