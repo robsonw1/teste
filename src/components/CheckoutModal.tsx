@@ -67,6 +67,7 @@ const CheckoutModal = ({ isOpen, onClose, items, subtotal, onOrderComplete }: Ch
   }, [customerData]);
 
   const total = subtotal + deliveryFee;
+  const { products: storeProducts } = useProducts();
 
   const calculateDeliveryFee = async (address: string, neighborhood: string, reference: string) => {
     if (deliveryType !== 'entrega') {
@@ -196,8 +197,6 @@ const CheckoutModal = ({ isOpen, onClose, items, subtotal, onOrderComplete }: Ch
       setCurrentOrderId(orderId);
       // Se o admin atualizou preços no /admin, queremos usar o preço atual
       // para itens que não são customizados (pizzas customizadas mantêm o preço salvo).
-      // Use the products store hook to get latest prices for non-customized items
-      const { products: storeProducts } = useProducts();
       const structured = {
         ...orderData,
         items: items.map(item => {
