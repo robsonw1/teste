@@ -11,6 +11,7 @@ import { Separator } from "@/components/ui/separator";
 import { toast } from "@/hooks/use-toast";
 import { ArrowLeft, Check, MapPin, CreditCard, Clock } from "lucide-react";
 import { CartItem } from "@/hooks/useCart";
+import { useProducts } from '@/hooks/useProducts';
 import { PixPaymentModal } from "./PixPaymentModal";
 
 interface CheckoutModalProps {
@@ -193,9 +194,17 @@ const CheckoutModal = ({ isOpen, onClose, items, subtotal, onOrderComplete }: Ch
 
       // Atualiza estado com dados estruturados e prepara o Whatsapp URL para uso posterior
       setCurrentOrderId(orderId);
+      // Se o admin atualizou preços no /admin, queremos usar o preço atual
+      // para itens que não são customizados (pizzas customizadas mantêm o preço salvo).
+      // Use the products store hook to get latest prices for non-customized items
+      const { products: storeProducts } = useProducts();
       const structured = {
         ...orderData,
-        items: items.map(item => ({ id: String(item.id), name: item.name, quantity: item.quantity, price: Number(item.price) }))
+        items: items.map(item => {
+          const productFromStore = storeProducts.find((p: any) => p.id === item.id);
+          const price = item.customization ? item.price : (productFromStore ? (Object.values(productFromStore.price)[0] ?? item.price) : item.price);
+          return { id: String(item.id), name: item.name, quantity: item.quantity, price: Number(price) };
+        })
       };
       setCurrentOrderData(structured);
 
