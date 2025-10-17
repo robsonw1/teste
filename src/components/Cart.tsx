@@ -1,5 +1,6 @@
 import { X, Minus, Plus, ShoppingBag } from "lucide-react";
 import DevelopedBy from '@/components/DevelopedBy';
+import { useProducts } from '@/hooks/useProducts';
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
@@ -28,7 +29,17 @@ interface CartProps {
 }
 
 const Cart = ({ isOpen, onClose, items, onUpdateQuantity, onRemoveItem, onCheckout }: CartProps) => {
-  const subtotal = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+  const { products } = useProducts();
+
+  // Quando o admin altera um produto via /admin, queremos que as atualizações
+  // reflitam imediatamente na UI (cardápio, popup e aba do carrinho). Para
+  // isso calcule o subtotal usando o preço atual do produto quando o item no
+  // carrinho não for uma customização (pizzas customizadas mantêm preço salvo).
+  const subtotal = items.reduce((sum, item) => {
+    const productFromStore = products.find(p => p.id === item.id);
+    const price = item.customization ? item.price : (productFromStore ? (Object.values(productFromStore.price)[0] ?? item.price) : item.price);
+    return sum + (price * item.quantity);
+  }, 0);
 
   if (items.length === 0) {
     return (
@@ -68,97 +79,81 @@ const Cart = ({ isOpen, onClose, items, onUpdateQuantity, onRemoveItem, onChecko
         </SheetHeader>
 
         <div className="flex-1 overflow-y-auto space-y-4 py-4">
-          {items.map((item) => (
-            <div key={item.id} className="flex items-center space-x-3 p-3 rounded-lg bg-surface border">
-              <div className="w-36 min-w-[9rem]">
-                {/* Mostrar o nome do item à esquerda e abaixo as customizações */}
-                <div className="text-sm">
-                  <div className="font-medium text-sm truncate">{item.name}</div>
+          {items.map((item) => {
+            const productFromStore = products.find(p => p.id === item.id);
+            const displayPrice: number = item.customization ? item.price : (productFromStore ? (Object.values(productFromStore.price)[0] as number) : item.price);
 
-                  {item.customization ? (
-                    <div className="space-y-1 mt-1">
-                      {/* Meia a meia / sabores */}
-                      {(item.customization.type === 'meia-meia' || item.isHalfPizza) && (
-                        <div className="text-xs text-muted-foreground truncate">Meia a meia: {item.customization.sabor1 || item.halfFlavor1} {item.customization.sabor2 || item.halfFlavor2 ? `+ ${item.customization.sabor2 || item.halfFlavor2}` : ''}</div>
-                      )}
+            return (
+              <div key={item.id} className="flex items-center space-x-3 p-3 rounded-lg bg-surface border">
+                <div className="w-36 min-w-[9rem]">
+                  <div className="text-sm">
+                    <div className="font-medium text-sm truncate">{item.customization ? item.name : (productFromStore?.name || item.name)}</div>
 
-                      {/* Borda */}
-                      {item.customization.borda && (
-                        <div className="text-xs text-muted-foreground">Borda: {item.customization.borda}</div>
-                      )}
+                    {item.customization ? (
+                      <div className="space-y-1 mt-1">
+                        {(item.customization.type === 'meia-meia' || item.isHalfPizza) && (
+                          <div className="text-xs text-muted-foreground truncate">Meia a meia: {item.customization.sabor1 || item.halfFlavor1} {item.customization.sabor2 || item.halfFlavor2 ? `+ ${item.customization.sabor2 || item.halfFlavor2}` : ''}</div>
+                        )}
 
-                      {/* Adicionais (limitados para exibição) */}
-                      {item.customization.adicionais && item.customization.adicionais.length > 0 && (
-                        <div className="text-xs text-muted-foreground truncate">Adicionais: {item.customization.adicionais.slice(0,3).join(', ')}{item.customization.adicionais.length > 3 ? ` +${item.customization.adicionais.length - 3}` : ''}</div>
-                      )}
+                        {item.customization.borda && (
+                          <div className="text-xs text-muted-foreground">Borda: {item.customization.borda}</div>
+                        )}
 
-                      {/* Bebida */}
-                      {item.customization.drink && item.customization.drink !== 'Sem Bebida' && (
-                        <div className="text-xs text-muted-foreground">Bebida: {item.customization.drink}</div>
-                      )}
+                        {item.customization.adicionais && item.customization.adicionais.length > 0 && (
+                          <div className="text-xs text-muted-foreground truncate">Adicionais: {item.customization.adicionais.slice(0,3).join(', ')}{item.customization.adicionais.length > 3 ? ` +${item.customization.adicionais.length - 3}` : ''}</div>
+                        )}
 
-                      {/* Observações */}
-                      {item.customization.observacoes && (
-                        <div className="text-xs text-muted-foreground truncate">Obs: {item.customization.observacoes}</div>
-                      )}
-                    </div>
-                  ) : (
-                    (item as any).description && <div className="text-xs text-muted-foreground truncate mt-1">{(item as any).description}</div>
+                        {item.customization.drink && item.customization.drink !== 'Sem Bebida' && (
+                          <div className="text-xs text-muted-foreground">Bebida: {item.customization.drink}</div>
+                        )}
+
+                        {item.customization.observacoes && (
+                          <div className="text-xs text-muted-foreground truncate">Obs: {item.customization.observacoes}</div>
+                        )}
+                      </div>
+                    ) : (
+                      (productFromStore?.description || (item as any).description) && (
+                        <div className="text-xs text-muted-foreground truncate mt-1">{productFromStore?.description || (item as any).description}</div>
+                      )
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex-1 min-w-0">
+                  <h4 className="font-medium text-sm truncate">{item.customization?.size || (productFromStore?.name || item.name)}</h4>
+                  {item.isHalfPizza && (
+                    <p className="text-xs text-muted-foreground">Meio a meio: {item.halfFlavor1} + {item.halfFlavor2}</p>
                   )}
+
+                  {item.customization?.pizza1 && typeof item.customization.pizza1 === 'object' && (
+                    <p className="text-xs text-muted-foreground">Primeira Pizza: {item.customization.pizza1.half1} / {item.customization.pizza1.half2}</p>
+                  )}
+                  {item.customization?.pizza2 && typeof item.customization.pizza2 === 'object' && (
+                    <p className="text-xs text-muted-foreground">Segunda Pizza: {item.customization.pizza2.half1} / {item.customization.pizza2.half2}</p>
+                  )}
+
+                  <p className="text-brand-red font-semibold">R$ {displayPrice.toFixed(2).replace('.', ',')}</p>
+                </div>
+
+                <div className="flex items-center space-x-2">
+                  <Button size="sm" variant="outline" className="w-8 h-8 p-0" onClick={() => onUpdateQuantity(item.id, item.quantity - 1)}>
+                    <Minus className="w-4 h-4" />
+                  </Button>
+
+                  <span className="font-medium w-8 text-center">{item.quantity}</span>
+
+                  <Button size="sm" className="w-8 h-8 p-0 bg-gradient-primary" onClick={() => onUpdateQuantity(item.id, item.quantity + 1)}>
+                    <Plus className="w-4 h-4" />
+                  </Button>
+
+                  <Button size="sm" variant="ghost" className="w-8 h-8 p-0 text-destructive hover:text-destructive" onClick={() => onRemoveItem(item.id)}>
+                    <X className="w-4 h-4" />
+                  </Button>
                 </div>
               </div>
-
-              <div className="flex-1 min-w-0">
-                <h4 className="font-medium text-sm truncate">{item.customization?.size || item.name}</h4>
-                {item.isHalfPizza && (
-                  <p className="text-xs text-muted-foreground">
-                    Meio a meio: {item.halfFlavor1} + {item.halfFlavor2}
-                  </p>
-                )}
-
-                {/* Combo meia-meia summaries stored in customization */}
-                {item.customization?.pizza1 && typeof item.customization.pizza1 === 'object' && (
-                  <p className="text-xs text-muted-foreground">Primeira Pizza: {item.customization.pizza1.half1} / {item.customization.pizza1.half2}</p>
-                )}
-                {item.customization?.pizza2 && typeof item.customization.pizza2 === 'object' && (
-                  <p className="text-xs text-muted-foreground">Segunda Pizza: {item.customization.pizza2.half1} / {item.customization.pizza2.half2}</p>
-                )}
-                <p className="text-brand-red font-semibold">R$ {item.price.toFixed(2).replace('.', ',')}</p>
-              </div>
-
-              <div className="flex items-center space-x-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="w-8 h-8 p-0"
-                  onClick={() => onUpdateQuantity(item.id, item.quantity - 1)}
-                >
-                  <Minus className="w-4 h-4" />
-                </Button>
-                
-                <span className="font-medium w-8 text-center">{item.quantity}</span>
-                
-                <Button
-                  size="sm"
-                  className="w-8 h-8 p-0 bg-gradient-primary"
-                  onClick={() => onUpdateQuantity(item.id, item.quantity + 1)}
-                >
-                  <Plus className="w-4 h-4" />
-                </Button>
-
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="w-8 h-8 p-0 text-destructive hover:text-destructive"
-                  onClick={() => onRemoveItem(item.id)}
-                >
-                  <X className="w-4 h-4" />
-                </Button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
-
         <div className="space-y-4 pt-4 border-t">
           <div className="space-y-2">
             <div className="flex justify-between text-sm">
