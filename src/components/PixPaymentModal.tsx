@@ -212,10 +212,22 @@ export function PixPaymentModal({ isOpen, onClose, total, orderId, orderData, on
       // Fallback para dispositivos que não suportam clipboard API
       const textArea = document.createElement('textarea')
       textArea.value = pixCode
-      document.body.appendChild(textArea)
-      textArea.select()
-      document.execCommand('copy')
-      document.body.removeChild(textArea)
+      try {
+        document.body.appendChild(textArea)
+        textArea.select()
+        document.execCommand('copy')
+      } catch (err) {
+        console.warn('Fallback clipboard copy failed:', err)
+      } finally {
+        try {
+          // remover de forma defensiva: se o nó já não for filho, não lança
+          if (textArea.parentNode) textArea.parentNode.removeChild(textArea)
+          else if (typeof textArea.remove === 'function') textArea.remove()
+        } catch (err) {
+          // Não propagar erro de remoção: apenas logar
+          console.warn('Falha ao remover textarea temporário:', err)
+        }
+      }
       alert("Código PIX copiado!")
     }
   }
