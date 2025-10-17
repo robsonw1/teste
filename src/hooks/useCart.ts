@@ -507,7 +507,17 @@ export const useCart = () => {
    }, [items]);
 
    const getTotalPrice = useCallback(() => {
-     return items.reduce((acc, item) => acc + ((item.price || 0) * (item.quantity || 0)), 0);
+    // Use current product prices from products store for non-customized items
+    try {
+      const { products } = useProducts();
+      return items.reduce((acc, item) => {
+        const productFromStore = products.find(p => p.id === item.id);
+        const unitPrice = item.customization ? item.price : (productFromStore ? (Object.values(productFromStore.price)[0] ?? item.price) : item.price);
+        return acc + ((unitPrice || 0) * (item.quantity || 0));
+      }, 0);
+    } catch (e) {
+      return items.reduce((acc, item) => acc + ((item.price || 0) * (item.quantity || 0)), 0);
+    }
    }, [items]);
 
    return {
