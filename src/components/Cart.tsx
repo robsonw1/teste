@@ -8,6 +8,7 @@ import { Separator } from "@/components/ui/separator";
 interface CartItem {
   id: string;
   name: string;
+  description?: string;
   price: number;
   quantity: number;
   image: string;
@@ -69,8 +70,47 @@ const Cart = ({ isOpen, onClose, items, onUpdateQuantity, onRemoveItem, onChecko
         <div className="flex-1 overflow-y-auto space-y-4 py-4">
           {items.map((item) => (
             <div key={item.id} className="flex items-center space-x-3 p-3 rounded-lg bg-surface border">
-              <img src={item.image} alt={item.name} className="w-16 h-16 rounded object-cover" />
-              
+              <div className="w-36 min-w-[9rem]">
+                {/* Mostrar descrição compacta da customização no lugar da imagem */}
+                <div className="text-sm">
+                  {item.customization ? (
+                    <div className="space-y-1">
+                      {/* Tamanho / tipo */}
+                      {item.customization.size && (
+                        <div className="font-medium text-sm">{item.customization.size}</div>
+                      )}
+
+                      {/* Meia a meia / sabores */}
+                      {(item.customization.type === 'meia-meia' || item.isHalfPizza) && (
+                        <div className="text-xs text-muted-foreground truncate">Meia a meia: {item.customization.sabor1 || item.halfFlavor1} {item.customization.sabor2 || item.halfFlavor2 ? `+ ${item.customization.sabor2 || item.halfFlavor2}` : ''}</div>
+                      )}
+
+                      {/* Borda */}
+                      {item.customization.borda && (
+                        <div className="text-xs text-muted-foreground">Borda: {item.customization.borda}</div>
+                      )}
+
+                      {/* Adicionais (limitados para exibição) */}
+                      {item.customization.adicionais && item.customization.adicionais.length > 0 && (
+                        <div className="text-xs text-muted-foreground truncate">Adicionais: {item.customization.adicionais.slice(0,3).join(', ')}{item.customization.adicionais.length > 3 ? ` +${item.customization.adicionais.length - 3}` : ''}</div>
+                      )}
+
+                      {/* Bebida */}
+                      {item.customization.drink && item.customization.drink !== 'Sem Bebida' && (
+                        <div className="text-xs text-muted-foreground">Bebida: {item.customization.drink}</div>
+                      )}
+
+                      {/* Observações */}
+                      {item.customization.observacoes && (
+                        <div className="text-xs text-muted-foreground truncate">Obs: {item.customization.observacoes}</div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="text-xs text-muted-foreground truncate">{(item as any).description || item.name}</div>
+                  )}
+                </div>
+              </div>
+
               <div className="flex-1 min-w-0">
                 <h4 className="font-medium text-sm truncate">{item.name}</h4>
                 {item.isHalfPizza && (
