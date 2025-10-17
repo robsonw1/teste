@@ -71,15 +71,12 @@ const Cart = ({ isOpen, onClose, items, onUpdateQuantity, onRemoveItem, onChecko
           {items.map((item) => (
             <div key={item.id} className="flex items-center space-x-3 p-3 rounded-lg bg-surface border">
               <div className="w-36 min-w-[9rem]">
-                {/* Mostrar descrição compacta da customização no lugar da imagem */}
+                {/* Mostrar o nome do item à esquerda e abaixo as customizações */}
                 <div className="text-sm">
-                  {item.customization ? (
-                    <div className="space-y-1">
-                      {/* Tamanho / tipo */}
-                      {item.customization.size && (
-                        <div className="font-medium text-sm">{item.customization.size}</div>
-                      )}
+                  <div className="font-medium text-sm truncate">{item.name}</div>
 
+                  {item.customization ? (
+                    <div className="space-y-1 mt-1">
                       {/* Meia a meia / sabores */}
                       {(item.customization.type === 'meia-meia' || item.isHalfPizza) && (
                         <div className="text-xs text-muted-foreground truncate">Meia a meia: {item.customization.sabor1 || item.halfFlavor1} {item.customization.sabor2 || item.halfFlavor2 ? `+ ${item.customization.sabor2 || item.halfFlavor2}` : ''}</div>
@@ -106,13 +103,13 @@ const Cart = ({ isOpen, onClose, items, onUpdateQuantity, onRemoveItem, onChecko
                       )}
                     </div>
                   ) : (
-                    <div className="text-xs text-muted-foreground truncate">{(item as any).description || item.name}</div>
+                    (item as any).description && <div className="text-xs text-muted-foreground truncate mt-1">{(item as any).description}</div>
                   )}
                 </div>
               </div>
 
               <div className="flex-1 min-w-0">
-                <h4 className="font-medium text-sm truncate">{item.name}</h4>
+                <h4 className="font-medium text-sm truncate">{item.customization?.size || item.name}</h4>
                 {item.isHalfPizza && (
                   <p className="text-xs text-muted-foreground">
                     Meio a meio: {item.halfFlavor1} + {item.halfFlavor2}
