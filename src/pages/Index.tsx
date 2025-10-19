@@ -49,6 +49,7 @@ const Index = () => {
   const [openCategories, setOpenCategories] = useState<string[]>(['pizzas-promocionais']);
   const [isComboContext, setIsComboContext] = useState(false); // Para rastrear se é contexto de combo
   const { items, addToCart, updateQuantity, removeItem, getTotalItems, getTotalPrice } = useCart();
+  const { clearCart } = useCart();
 
   // Wrap addToCart so the cart drawer opens automatically when an item is added
   const handleAddToCart = (...args: Parameters<typeof addToCart>) => {
@@ -339,9 +340,17 @@ const Index = () => {
         items={items}
         subtotal={getTotalPrice()}
         onOrderComplete={() => {
-          // Clear cart and close modals
-          items.forEach(item => removeItem(item.id));
+          // Clear cart and reset UI selections
+          clearCart();
+          // Close checkout modal
           setIsCheckoutOpen(false);
+          // Reset selected modals/state to reflect cleared cart
+          setIsCartOpen(false);
+          setSelectedPizza(null);
+          setSelectedCombo(null);
+          setPreSelectedPizzaForCustomization(null);
+          setPreSelectedPizzaForHalf(null);
+          setIsComboContext(false);
         }}
       />
 
