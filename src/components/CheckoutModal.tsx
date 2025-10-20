@@ -46,6 +46,9 @@ const CheckoutModal = ({ isOpen, onClose, items, subtotal, onOrderComplete }: Ch
     observations: ''
   });
 
+  const [neighborhoodsList, setNeighborhoodsList] = useState<{ key: string; label: string }[]>([]);
+  const [neighborhoodMode, setNeighborhoodMode] = useState<'select' | 'other'>('select');
+
   // Load saved customer data from localStorage
   useEffect(() => {
     const savedCustomerData = localStorage.getItem('forneiro-customer-data');
@@ -57,6 +60,37 @@ const CheckoutModal = ({ isOpen, onClose, items, subtotal, onOrderComplete }: Ch
         console.error('Error loading saved customer data:', error);
       }
     }
+    // load neighborhood options (from admin storage if present)
+    (async () => {
+      try {
+        const mod = await import('@/services/deliveryNeighborhoods');
+        const loaded = (mod.loadAdminNeighborhoods ? mod.loadAdminNeighborhoods() : (mod.default || mod.NEIGHBORHOOD_OPTIONS));
+        const opts = (loaded || []).map((o: any) => ({ key: o.key, label: o.label }));
+        setNeighborhoodsList(opts);
+
+        // listen for updates (custom event and storage event)
+        const onUpdate = (e: any) => {
+          try {
+            const next = (mod.loadAdminNeighborhoods ? mod.loadAdminNeighborhoods() : (mod.default || mod.NEIGHBORHOOD_OPTIONS));
+            setNeighborhoodsList((next || []).map((o: any) => ({ key: o.key, label: o.label })));
+          } catch (err) {
+            console.warn('Failed to reload neighborhoods on update', err);
+          }
+        };
+
+        window.addEventListener('forneiro:neighborhoods-updated', onUpdate as any);
+        window.addEventListener('storage', onUpdate as any);
+
+        // cleanup on unmount
+        return () => {
+          window.removeEventListener('forneiro:neighborhoods-updated', onUpdate as any);
+          window.removeEventListener('storage', onUpdate as any);
+        };
+
+      } catch (e) {
+        console.warn('Could not load neighborhood options', e);
+      }
+    })();
   }, []);
 
   // Save customer data to localStorage whenever it changes
@@ -329,12 +363,35 @@ const CheckoutModal = ({ isOpen, onClose, items, subtotal, onOrderComplete }: Ch
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label htmlFor="neighborhood">Bairro *</Label>
-                <Input
-                  id="neighborhood"
-                  value={customerData.neighborhood}
-                  onChange={(e) => setCustomerData({...customerData, neighborhood: e.target.value})}
-                  placeholder="Seu bairro"
-                />
+                {neighborhoodMode === 'select' ? (
+                  <select
+                    id="neighborhood"
+                    value={customerData.neighborhood}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val === '__other__') {
+                        setNeighborhoodMode('other');
+                        setCustomerData({...customerData, neighborhood: ''});
+                      } else {
+                        setCustomerData({...customerData, neighborhood: val});
+                      }
+                    }}
+                    className={"flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"}
+                  >
+                    <option value="">Selecione o bairro</option>
+                    {neighborhoodsList.map(n => (
+                      <option key={n.key} value={n.label}>{n.label}</option>
+                    ))}
+                    <option value="__other__">Outro (digitar)</option>
+                  </select>
+                ) : (
+                  <Input
+                    id="neighborhood"
+                    value={customerData.neighborhood}
+                    onChange={(e) => setCustomerData({...customerData, neighborhood: e.target.value})}
+                    placeholder="Digite seu bairro"
+                  />
+                )}
               </div>
               <div>
                 <Label htmlFor="reference">Ponto de Referência</Label>
