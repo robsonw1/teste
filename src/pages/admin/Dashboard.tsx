@@ -6,6 +6,7 @@ import { useProducts } from '@/hooks/useProducts';
 import ProductList from './components/ProductList';
 import AddProductModal from './components/AddProductModal';
 import EstablishmentSettings from './components/EstablishmentSettings';
+import Neighborhoods from './Neighborhoods';
 
 const Dashboard = () => {
   const { products, updateProduct, createProduct, deleteProduct } = useProducts();
@@ -29,6 +30,15 @@ const Dashboard = () => {
           </CardHeader>
           <CardContent>
             <EstablishmentSettings />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Configurações de Entrega</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Neighborhoods />
           </CardContent>
         </Card>
 
