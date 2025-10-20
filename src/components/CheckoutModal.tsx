@@ -48,6 +48,7 @@ const CheckoutModal = ({ isOpen, onClose, items, subtotal, onOrderComplete }: Ch
 
   const [neighborhoodsList, setNeighborhoodsList] = useState<{ key: string; label: string }[]>([]);
   const [neighborhoodMode, setNeighborhoodMode] = useState<'select' | 'other'>('select');
+  const [previousNeighborhoodSelection, setPreviousNeighborhoodSelection] = useState<string>('');
 
   // Load saved customer data from localStorage
   useEffect(() => {
@@ -188,8 +189,16 @@ const CheckoutModal = ({ isOpen, onClose, items, subtotal, onOrderComplete }: Ch
             await calculateDeliveryFee(customerData.address, customerData.neighborhood, customerData.reference);
           }
         } else {
-          // 'other' mode: must use Google Maps
-          await calculateDeliveryFee(customerData.address, customerData.neighborhood, customerData.reference);
+          // 'other' mode: use admin-configured default fee if available
+          try {
+            const mod = await import('@/services/deliveryNeighborhoods');
+            const defaultFee = (mod.loadDefaultOtherFee && typeof window !== 'undefined') ? mod.loadDefaultOtherFee() : 9;
+            setDeliveryFee(Number(defaultFee));
+            toast({ title: 'Taxa aplicada', description: `Taxa padrão aplicada: R$ ${Number(defaultFee).toFixed(2).replace('.', ',')}` });
+          } catch (e) {
+            // fallback
+            await calculateDeliveryFee(customerData.address, customerData.neighborhood, customerData.reference);
+          }
         }
       } catch (err) {
         // If any error occurs while trying to resolve a fixed fee, fallback to Google Maps
@@ -410,8 +419,11 @@ const CheckoutModal = ({ isOpen, onClose, items, subtotal, onOrderComplete }: Ch
                       const val = e.target.value;
                       if (val === '__other__') {
                         setNeighborhoodMode('other');
+                        // remember previous selection (empty for now)
+                        setPreviousNeighborhoodSelection(customerData.neighborhood || '');
                         setCustomerData({...customerData, neighborhood: ''});
                       } else {
+                        setPreviousNeighborhoodSelection(val || '');
                         setCustomerData({...customerData, neighborhood: val});
                       }
                     }}
@@ -424,12 +436,27 @@ const CheckoutModal = ({ isOpen, onClose, items, subtotal, onOrderComplete }: Ch
                     <option value="__other__">Outro (digitar)</option>
                   </select>
                 ) : (
-                  <Input
-                    id="neighborhood"
-                    value={customerData.neighborhood}
-                    onChange={(e) => setCustomerData({...customerData, neighborhood: e.target.value})}
-                    placeholder="Digite seu bairro"
-                  />
+                  <div>
+                    <Input
+                      id="neighborhood"
+                      value={customerData.neighborhood}
+                      onChange={(e) => setCustomerData({...customerData, neighborhood: e.target.value})}
+                      placeholder="Digite seu bairro"
+                    />
+                    <div className="mt-2 flex gap-2">
+                      <button
+                        type="button"
+                        className="text-sm text-muted-foreground underline"
+                        onClick={() => {
+                          // restore previous selection and show select again
+                          setNeighborhoodMode('select');
+                          setCustomerData({...customerData, neighborhood: previousNeighborhoodSelection || ''});
+                        }}
+                      >
+                        Escolher da lista
+                      </button>
+                    </div>
+                  </div>
                 )}
               </div>
               <div>
