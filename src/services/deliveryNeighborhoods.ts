@@ -32,10 +32,11 @@ export const NEIGHBORHOOD_OPTIONS: NeighborhoodOption[] = [
 // Normaliza texto para comparação simples (remove acentos, toLowerCase and trim)
 const normalize = (s?: string) => {
   if (!s) return '';
+  // Use a compatible accent removal that works across more browsers/environments
   return s
     .toLowerCase()
     .normalize('NFD')
-    .replace(/\p{Diacritic}/gu, '')
+    .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^a-z0-9 ]/g, '')
     .trim();
 };
@@ -68,6 +69,7 @@ export default NEIGHBORHOOD_OPTIONS;
 
 // Admin persistence helpers (simple localStorage). Key can be replaced by backend calls later.
 const ADMIN_STORAGE_KEY = 'forneiro-admin-neighborhoods';
+const ADMIN_DEFAULT_FEE_KEY = 'forneiro-admin-default-other-fee';
 
 export const loadAdminNeighborhoods = (): NeighborhoodOption[] => {
   try {
@@ -96,5 +98,31 @@ export const saveAdminNeighborhoods = (list: NeighborhoodOption[]) => {
     }
   } catch (e) {
     console.error('Failed to save admin neighborhoods', e);
+  }
+};
+
+export const loadDefaultOtherFee = (): number => {
+  try {
+    const raw = localStorage.getItem(ADMIN_DEFAULT_FEE_KEY);
+    if (!raw) return 9;
+    const v = Number(JSON.parse(raw));
+    return Number.isFinite(v) ? v : 9;
+  } catch (e) {
+    return 9;
+  }
+};
+
+export const saveDefaultOtherFee = (fee: number) => {
+  try {
+    localStorage.setItem(ADMIN_DEFAULT_FEE_KEY, JSON.stringify(Number(fee)));
+    // notify listeners
+    try {
+      if (typeof window !== 'undefined' && (window as any).dispatchEvent) {
+        const ev = new CustomEvent('forneiro:neighborhoods-updated', { detail: { defaultOtherFee: fee } });
+        window.dispatchEvent(ev);
+      }
+    } catch (e) {}
+  } catch (e) {
+    console.error('Failed to save default other fee', e);
   }
 };
