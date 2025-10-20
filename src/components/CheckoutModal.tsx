@@ -113,6 +113,7 @@ const CheckoutModal = ({ isOpen, onClose, items, subtotal, onOrderComplete }: Ch
     
     try {
       const { calculateDeliveryFee: calcFee } = await import('@/services/googleMaps');
+      console.debug('Calculating delivery fee for', { address, neighborhood, reference });
       const result = await calcFee(address, neighborhood, reference);
       
       setDeliveryFee(result.fee);
@@ -156,7 +157,45 @@ const CheckoutModal = ({ isOpen, onClose, items, subtotal, onOrderComplete }: Ch
     }
 
     if (deliveryType === 'entrega') {
-      await calculateDeliveryFee(customerData.address, customerData.neighborhood, customerData.reference);
+      // If the user selected a neighborhood from the select, prefer the admin-saved fixed fee
+      try {
+        if (neighborhoodMode === 'select' && customerData.neighborhood) {
+          const mod = await import('@/services/deliveryNeighborhoods');
+          // Use admin-saved list directly to avoid any mismatch between environments
+          const adminList = (mod.loadAdminNeighborhoods && typeof window !== 'undefined') ? mod.loadAdminNeighborhoods() : null;
+          const normalize = (s: string) => s ? s.toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '').replace(/[^a-z0-9 ]/g, '').trim() : '';
+          const target = normalize(customerData.neighborhood || '');
+          if (Array.isArray(adminList) && adminList.length) {
+            const found = adminList.find((opt: any) => {
+              const label = String(opt.label || '');
+              const key = String(opt.key || '');
+              const aliases = Array.isArray(opt.aliases) ? opt.aliases : [];
+              if (normalize(label) === target) return true;
+              if (key === customerData.neighborhood) return true;
+              if (aliases.some((a: string) => normalize(a) === target)) return true;
+              if (target.includes(normalize(label))) return true;
+              return false;
+            });
+            if (found) {
+              setDeliveryFee(Number(found.fee));
+              toast({ title: 'Taxa aplicada', description: `Taxa fixa aplicada: R$ ${Number(found.fee).toFixed(2).replace('.', ',')}` });
+            } else {
+              // fallback to calculate by address (Google Maps)
+              await calculateDeliveryFee(customerData.address, customerData.neighborhood, customerData.reference);
+            }
+          } else {
+            // no admin list available: fallback to calculate
+            await calculateDeliveryFee(customerData.address, customerData.neighborhood, customerData.reference);
+          }
+        } else {
+          // 'other' mode: must use Google Maps
+          await calculateDeliveryFee(customerData.address, customerData.neighborhood, customerData.reference);
+        }
+      } catch (err) {
+        // If any error occurs while trying to resolve a fixed fee, fallback to Google Maps
+        console.warn('Erro ao resolver taxa local, usando Google Maps', err);
+        await calculateDeliveryFee(customerData.address, customerData.neighborhood, customerData.reference);
+      }
     }
 
     setStep(2);
