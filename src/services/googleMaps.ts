@@ -75,6 +75,57 @@ export const calculateDeliveryFee = async (
 ): Promise<DeliveryCalculationResult> => {
   const customerAddress = `${address}, ${neighborhood}, Sorocaba - SP`;
 
+  // Try to resolve a local fixed fee first to avoid unnecessary Google Maps calls
+  try {
+    // Dynamically import the local neighborhoods module to keep bundle small
+    const mod = await import('./deliveryNeighborhoods');
+    // First, try to load admin-saved list (from localStorage) and match robustly
+    try {
+      const adminList = (mod.loadAdminNeighborhoods && typeof window !== 'undefined') ? mod.loadAdminNeighborhoods() : null;
+      const normalize = (s: string) => s ? s.toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '').replace(/[^a-z0-9 ]/g, '').trim() : '';
+      if (Array.isArray(adminList) && adminList.length) {
+        const target = normalize(neighborhood || '');
+        for (const opt of adminList) {
+          const key = String(opt.key || '');
+          const label = String(opt.label || '');
+          const aliases = Array.isArray(opt.aliases) ? opt.aliases.map(String) : [];
+          if (normalize(label) === target) {
+            console.info('Using admin fixed neighborhood fee (label match) for', neighborhood, opt.fee);
+            return { fee: opt.fee, distance: '—', duration: '—', distanceInKm: 0 };
+          }
+          if (key === neighborhood) {
+            console.info('Using admin fixed neighborhood fee (key match) for', neighborhood, opt.fee);
+            return { fee: opt.fee, distance: '—', duration: '—', distanceInKm: 0 };
+          }
+          if (aliases.some(a => normalize(a) === target)) {
+            console.info('Using admin fixed neighborhood fee (alias match) for', neighborhood, opt.fee);
+            return { fee: opt.fee, distance: '—', duration: '—', distanceInKm: 0 };
+          }
+          // also check contains
+          if (target.includes(normalize(label)) || aliases.some(a => target.includes(normalize(a)))) {
+            console.info('Using admin fixed neighborhood fee (contains match) for', neighborhood, opt.fee);
+            return { fee: opt.fee, distance: '—', duration: '—', distanceInKm: 0 };
+          }
+        }
+      }
+    } catch (e) {
+      // ignore admin list lookup errors and fallback to generic getNeighborhoodFee
+      console.warn('Admin neighborhood lookup failed, falling back to generic lookup', e);
+    }
+
+    // Fallback to generic helper if present
+    if (mod.getNeighborhoodFee) {
+      const fixedFee = mod.getNeighborhoodFee(neighborhood);
+      if (fixedFee !== null) {
+        console.info('Using fixed neighborhood fee (generic) for', neighborhood, fixedFee);
+        return { fee: fixedFee, distance: '—', duration: '—', distanceInKm: 0 };
+      }
+    }
+  } catch (e) {
+    // If anything goes wrong with the local lookup, fall back to using Google Maps
+    console.warn('Local neighborhood lookup failed, falling back to Google Maps', e);
+  }
+
   try {
     // Primeiro, obter coordenadas do endereço do cliente
     const geocodeUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(customerAddress)}&key=${GOOGLE_MAPS_API_KEY}`;
