@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { NEIGHBORHOOD_OPTIONS, loadAdminNeighborhoods, saveAdminNeighborhoods } from '@/services/deliveryNeighborhoods';
+import { loadDefaultOtherFee, saveDefaultOtherFee } from '@/services/deliveryNeighborhoods';
 
 type Neighborhood = {
 	key: string;
@@ -17,11 +18,15 @@ const AdminNeighborhoods = () => {
 	const [list, setList] = useState<Neighborhood[]>([]);
 	const [editingIndex, setEditingIndex] = useState<number | null>(null);
 	const [form, setForm] = useState<Neighborhood>({ key: '', label: '', aliases: [], fee: 0 });
+		const [defaultOtherFee, setDefaultOtherFee] = useState<number>(9);
 
 	useEffect(() => {
 		try {
 			const loaded = loadAdminNeighborhoods();
 			setList(loaded as any);
+				try {
+					setDefaultOtherFee(loadDefaultOtherFee());
+				} catch (e) {}
 		} catch (e) {
 			setList(NEIGHBORHOOD_OPTIONS as any);
 		}
@@ -80,6 +85,15 @@ const AdminNeighborhoods = () => {
 								<Input type="number" value={String(form.fee)} onChange={(e) => setForm({...form, fee: Number(e.target.value)})} placeholder="4" />
 							</div>
 						</div>
+									<div className="mt-4 grid grid-cols-2 gap-4 items-end">
+										<div>
+											<Label>Taxa padrão para "Outros" (R$)</Label>
+											<Input type="number" value={String(defaultOtherFee)} onChange={(e) => setDefaultOtherFee(Number(e.target.value))} />
+										</div>
+														<div>
+															<Button onClick={() => { saveDefaultOtherFee(defaultOtherFee); /* saved */ }} className="mt-1">Salvar taxa padrão</Button>
+														</div>
+									</div>
 						<div className="mt-3 flex gap-2">
 							{editingIndex === null ? (
 								<Button onClick={handleAdd}>Adicionar</Button>
