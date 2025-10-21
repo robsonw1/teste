@@ -240,11 +240,11 @@ const CheckoutModal = ({ isOpen, onClose, items, subtotal, onOrderComplete }: Ch
         console.log('========================================');
         console.log('🎯 INICIANDO ENVIO DO PEDIDO');
         console.log('📦 Dados do pedido:', JSON.stringify(orderData, null, 2));
-        console.log('🌐 URL do backend:', '/api/print-order');
+        console.log('🌐 URL do backend:', 'https://app-forneiro-eden-backend.ilewqk.easypanel.host/api/print-order');
         console.log('========================================');
 
         // Envia para o backend
-        const response = await fetch('/api/print-order', {
+        const response = await fetch('https://app-forneiro-eden-backend.ilewqk.easypanel.host/api/print-order', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
@@ -387,7 +387,7 @@ const CheckoutModal = ({ isOpen, onClose, items, subtotal, onOrderComplete }: Ch
       // This avoids CORS issues because the browser posts to the same origin (/api/print-order)
       // and the server forwards the body to PRINT_WEBHOOK_URL.
       try {
-        const proxyResp = await fetch('/api/print-order', {
+        const proxyResp = await fetch('https://app-forneiro-eden-backend.ilewqk.easypanel.host/api/print-order', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(orderData)
