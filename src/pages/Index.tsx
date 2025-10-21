@@ -340,17 +340,18 @@ const Index = () => {
         items={items}
         subtotal={getTotalPrice()}
         onOrderComplete={() => {
-          // Clear cart and reset UI selections
-          clearCart();
-          // Close checkout modal
+          // Close checkout modal and reset UI state
           setIsCheckoutOpen(false);
-          // Reset selected modals/state to reflect cleared cart
           setIsCartOpen(false);
           setSelectedPizza(null);
           setSelectedCombo(null);
           setPreSelectedPizzaForCustomization(null);
           setPreSelectedPizzaForHalf(null);
           setIsComboContext(false);
+        }}
+        onPrintSuccess={() => {
+          // Clear cart immediately after successful print webhook
+          clearCart();
         }}
       />
 
