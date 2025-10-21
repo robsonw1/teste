@@ -321,6 +321,10 @@ const CheckoutModal = ({ isOpen, onClose, items, subtotal, onOrderComplete }: Ch
         if (!resp.ok) {
           const errorText = await resp.text().catch(() => '<no-text>');
           console.error('❌ Erro ao enviar:', errorText);
+          // If the proxy returned HTML (likely wrong webhook URL), surface a friendlier toast
+          if (String(errorText || '').toLowerCase().includes('<!doctype') || String(errorText || '').toLowerCase().includes('<html')) {
+            toast({ title: 'Erro na impressão', description: 'O serviço de impressão respondeu com uma página HTML — verifique PRINT_WEBHOOK_URL no servidor.', variant: 'destructive' });
+          }
           throw new Error(`Erro ao imprimir: ${resp.status}`);
         }
 
