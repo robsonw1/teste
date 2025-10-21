@@ -8,6 +8,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { toast } from "@/hooks/use-toast";
 import DevelopedBy from "@/components/DevelopedBy";
+import ScrollHint from "@/components/ui/ScrollHint";
 import { Product } from "@/data/products";
 import { useProducts } from "@/hooks/useProducts";
 
@@ -213,16 +214,7 @@ const HalfPizzaModal = ({ isOpen, onClose, pizzas, onAddToCart, preSelectedFlavo
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-4xl max-h-[90vh]">
         <div ref={contentRef} className="max-h-[90vh] overflow-y-auto p-4 relative">
-          {showScrollHint && (
-            <div className="pointer-events-none fixed left-1/2 transform -translate-x-1/2 bottom-24 z-50 flex flex-col items-center space-y-1 animate-fade-in">
-              <div className="text-sm bg-black/70 text-white px-3 py-1 rounded">Mais opções abaixo</div>
-              <div className="w-8 h-8 flex items-center justify-center">
-                <svg className="animate-bounce text-white" width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M12 5v14M5 12l7 7 7-7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              </div>
-            </div>
-          )}
+          <ScrollHint show={showScrollHint} />
           <DialogHeader>
           <DialogTitle className="text-2xl font-bold flex items-center">
             🍕 {isComboContext ? `Personalizar ${combo?.name}` : 'Pizza Meio a Meio'}
