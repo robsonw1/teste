@@ -212,20 +212,45 @@ export function PixPaymentModal({ isOpen, onClose, total, orderId, orderData, on
       // Fallback para dispositivos que não suportam clipboard API
       const textArea = document.createElement('textarea')
       textArea.value = pixCode
+      // Try to append/select/copy/remove with defensive guards so mobile WebViews don't throw NotFoundError
+      let appended = false
       try {
-        document.body.appendChild(textArea)
-        textArea.select()
-        document.execCommand('copy')
+        if (document && document.body && typeof document.body.appendChild === 'function') {
+          document.body.appendChild(textArea)
+          appended = true
+        }
+        // Only attempt select/execCommand if append was successful
+        if (appended) {
+          try {
+            textArea.focus()
+            textArea.select()
+            document.execCommand('copy')
+          } catch (innerErr) {
+            console.warn('Fallback copy attempt failed (select/execCommand):', innerErr)
+          }
+        }
       } catch (err) {
-        console.warn('Fallback clipboard copy failed:', err)
+        console.warn('Fallback clipboard copy failed (append):', err)
       } finally {
+        // Always try to remove the element but guard against exceptions
         try {
-          // remover de forma defensiva: se o nó já não for filho, não lança
-          if (textArea.parentNode) textArea.parentNode.removeChild(textArea)
-          else if (typeof textArea.remove === 'function') textArea.remove()
+          const parent = textArea.parentNode as Node | null
+          if (parent && typeof (parent.removeChild) === 'function') {
+            try {
+              parent.removeChild(textArea)
+            } catch (remErr) {
+              // If removeChild fails for some reason, try element.remove()
+              try {
+                if (typeof (textArea as any).remove === 'function') (textArea as any).remove()
+              } catch (remErr2) {
+                console.warn('Failed to remove temporary textarea (silenciado):', remErr2)
+              }
+            }
+          } else if (typeof (textArea as any).remove === 'function') {
+            try { (textArea as any).remove() } catch (remErr3) { /* swallow */ }
+          }
         } catch (err) {
-          // Não propagar erro de remoção: apenas logar
-          console.warn('Falha ao remover textarea temporário:', err)
+          console.warn('Falha ao remover textarea temporário (silenciado):', err)
         }
       }
       alert("Código PIX copiado!")
