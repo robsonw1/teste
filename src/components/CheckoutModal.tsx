@@ -302,14 +302,12 @@ const CheckoutModal = ({ isOpen, onClose, items, subtotal, onOrderComplete }: Ch
       // Persist the current order data in state so other flows (webhook, print) can access it
       setCurrentOrderData(orderData);
 
-      // Post order summary to print webhook (if configured). Keep behavior but do not force redirect.
-      // Use Vite client env (import.meta.env). Fallback to hardcoded dev webhook if missing.
-      // @ts-ignore
-      const printWebhook = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_PRINT_WEBHOOK_URL)
-        ? String(import.meta.env.VITE_PRINT_WEBHOOK_URL)
-        : 'https://n8nwebhook.aezap.site/webhook/impressao';
+      // Post order summary to local proxy which forwards to the configured print
+      // webhook on the server. This avoids CORS/preflight problems from the
+      // browser when the external webhook doesn't set CORS headers.
+      const printWebhook = '/api/print'; // always use server proxy
 
-      await fetch(printWebhook, {
+      const resp = await fetch(printWebhook, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -317,7 +315,41 @@ const CheckoutModal = ({ isOpen, onClose, items, subtotal, onOrderComplete }: Ch
         body: JSON.stringify(orderData)
       });
 
-      // Prepare WhatsApp URL for the user to open if they choose. Do not open automatically.
+      // If the request itself failed (non-2xx) treat as an error and do not advance
+      if (!resp.ok) {
+        // try to get body for debugging
+        let bodyText = '';
+        try { bodyText = await resp.text(); } catch (e) { /* noop */ }
+        console.error('Print webhook returned non-OK:', resp.status, bodyText);
+        toast({
+          title: 'Falha ao encaminhar para impressão',
+          description: `A impressão não pôde ser acionada (status ${resp.status}). Tente novamente ou contate a pizzaria.`,
+          variant: 'destructive'
+        });
+        return; // do not show success popup
+      }
+
+      // If server responded OK, try to parse JSON and check for proxy-level errors
+      let parsed: any = null;
+      const contentType = resp.headers.get('content-type') || '';
+      if (contentType.includes('application/json')) {
+        try { parsed = await resp.json(); } catch (e) { parsed = null; }
+      } else {
+        // non-JSON response is acceptable; leave parsed null
+      }
+
+      // If the proxied endpoint explicitly returned an error shape, treat as failure
+      if (parsed && parsed.error) {
+        console.error('Print proxy returned error body:', parsed);
+        toast({
+          title: 'Erro na impressão',
+          description: parsed.detail || parsed.error || 'Resposta inválida do serviço de impressão.',
+          variant: 'destructive'
+        });
+        return;
+      }
+
+      // Success: prepare WhatsApp URL and show confirmation
       const pizzariaNumber = '5515997794656'; // WhatsApp da pizzaria
       const orderItems = items.map(item => `• ${item.name} (${item.quantity}x)`).join('\n');
       const message = `Olá! Acabei de fazer um pedido no Forneiro Éden Pizzaria:\n\n${orderItems}\n\nValor total: R$ ${total.toFixed(2).replace('.', ',')}\nCódigo do pedido: ${orderId}\n\nDados para ${deliveryType}:\nNome: ${customerData.name}\nTelefone: ${customerData.phone}${deliveryType === 'entrega' ? `\nEndereço: ${customerData.address}, ${customerData.neighborhood}` : ''}\nPagamento: ${paymentMethod.toUpperCase()}${customerData.observations ? `\nObservações: ${customerData.observations}` : ''}`;
