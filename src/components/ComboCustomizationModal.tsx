@@ -12,6 +12,7 @@ import { Product } from "@/data/products";
 import { useProducts } from "@/hooks/useProducts";
 import HalfPizzaModal from "@/components/HalfPizzaModal";
 import DevelopedBy from "@/components/DevelopedBy";
+import ScrollHint from "@/components/ui/ScrollHint";
 
 interface ComboCustomizationModalProps {
   isOpen: boolean;
@@ -46,15 +47,17 @@ const ComboCustomizationModal = ({ isOpen, onClose, combo, onAddToCart }: ComboC
   const highlightRef = useRef<any>(null);
 
   const scrollToSection = (el: HTMLElement | null) => {
-    if (!el) return;
-    // smooth scroll into view, center vertically if possible
-    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    // add highlight class briefly
-    el.classList.add('ring-2', 'ring-offset-2', 'ring-brand-yellow/60');
-    clearTimeout(highlightRef.current);
-    highlightRef.current = setTimeout(() => {
-      el.classList.remove('ring-2', 'ring-offset-2', 'ring-brand-yellow/60');
-    }, 1200);
+    try {
+      if (!el || !(el as any).isConnected) return;
+      try { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) {}
+      try { el.classList.add('ring-2', 'ring-offset-2', 'ring-brand-yellow/60'); } catch (e) {}
+      try { clearTimeout(highlightRef.current); } catch (e) {}
+      highlightRef.current = setTimeout(() => {
+        try { if ((el as any).isConnected) el.classList.remove('ring-2', 'ring-offset-2', 'ring-brand-yellow/60'); } catch (e) {}
+      }, 1200);
+    } catch (err) {
+      console.warn('scrollToSection failed defensively (combo):', err);
+    }
   }
 
   // scroll hint state and ref for the scrollable content
@@ -273,16 +276,7 @@ const ComboCustomizationModal = ({ isOpen, onClose, combo, onAddToCart }: ComboC
       <DialogContent className="max-w-2xl max-h-[90vh]">
         <div ref={contentRef} className="max-h-[90vh] overflow-y-auto p-4 relative">
           {/* Scroll hint overlay */}
-          {showScrollHint && (
-            <div className="pointer-events-none fixed left-1/2 transform -translate-x-1/2 bottom-24 z-50 flex flex-col items-center space-y-1 animate-fade-in">
-              <div className="text-sm bg-black/70 text-white px-3 py-1 rounded">Mais opções abaixo</div>
-              <div className="w-8 h-8 flex items-center justify-center">
-                <svg className="animate-bounce text-white" width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M12 5v14M5 12l7 7 7-7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              </div>
-            </div>
-          )}
+            <ScrollHint show={showScrollHint} />
 
           <DialogHeader>
           <DialogTitle className="text-2xl font-bold">
