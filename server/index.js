@@ -890,6 +890,15 @@ app.post('/api/print', express.json({ type: '*/*' }), async (req, res) => {
       console.log('[/api/print] received request (could not serialize body)');
     }
 
+    // persist last print request for debugging (non-blocking)
+    try {
+      const lastPath = path.join(LOGO_DIR, 'last-print.json');
+      await fs.promises.writeFile(lastPath, JSON.stringify(req.body || {}, null, 2), 'utf8');
+      console.log('[/api/print] saved last request to', lastPath);
+    } catch (e) {
+      console.warn('[/api/print] failed to write last-print.json', e && e.message ? e.message : e);
+    }
+
     // forward the request body to the external webhook
     console.log('[/api/print] forwarding to', webhookUrl);
     const upstream = await fetch(String(webhookUrl), {
@@ -901,15 +910,22 @@ app.post('/api/print', express.json({ type: '*/*' }), async (req, res) => {
     const text = await upstream.text().catch(() => '');
     console.log('[/api/print] upstream status=', upstream.status, 'bodyPreview=', String(text || '').slice(0,2000));
 
+    // Treat non-OK upstream or empty response as failure so frontend won't finalize
     if (!upstream.ok) {
       return res.status(502).json({ error: 'Print webhook error', status: upstream.status, detail: text });
     }
 
+    if (!text || !String(text).trim()) {
+      console.warn('[/api/print] upstream returned empty body — treating as failure');
+      return res.status(502).json({ error: 'Empty response from print webhook', status: upstream.status });
+    }
+
     try {
-      const json = JSON.parse(text || 'null');
-      return res.json(json === null ? { ok: true } : json);
+      const json = JSON.parse(text);
+      return res.json(json);
     } catch (e) {
-      return res.send(text || 'ok');
+      // If upstream returned non-JSON text but non-empty, forward as text
+      return res.send(text);
     }
   } catch (err) {
     console.error('Erro ao enviar para webhook (proxy):', err && err.stack ? err.stack : err);
