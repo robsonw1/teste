@@ -26,9 +26,6 @@ app.use((req, res, next) => {
 });
 
 // EARLY CORS: set CORS headers and short-circuit OPTIONS before any other middleware.
-// This is intentionally aggressive to ensure preflight requests are answered even
-// when proxies or later middleware might interfere. In production you can tighten
-// this by setting FRONTEND_ORIGIN to a specific origin.
 app.use((req, res, next) => {
   try {
     const originHeader = req.headers && req.headers.origin ? String(req.headers.origin) : (FRONTEND_ORIGIN || '*');
@@ -41,33 +38,24 @@ app.use((req, res, next) => {
   return next();
 });
 
-// Enforce FRONTEND_ORIGIN in production (do not allow wildcard)
+// Enforce FRONTEND_ORIGIN in production
 let FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || (process.env.NODE_ENV === 'production' ? null : '*');
-// normalize value (remove trailing slash)
 if (FRONTEND_ORIGIN) FRONTEND_ORIGIN = String(FRONTEND_ORIGIN).replace(/\/$/, '');
 if (!FRONTEND_ORIGIN && process.env.NODE_ENV === 'production') {
   console.error('FRONTEND_ORIGIN must be set in production to restrict CORS. Aborting.');
   process.exit(1);
 }
 
-
-// Allow CORS by reflecting the request origin. This avoids preflight failures
-// when the request origin matches the frontend host but small mismatches occur
-// (use a stricter policy in production if desired).
 const corsOptions = {
-  origin: true, // reflect request origin
+  origin: true,
   methods: ['GET','POST','OPTIONS'],
   allowedHeaders: ['Content-Type','Authorization','x-idempotency-key','x-hub-signature-256','x-hub-signature','x-signature','x-driven-signature','x-admin-token'],
   optionsSuccessStatus: 204
 };
 
 app.use(cors(corsOptions));
-// Ensure preflight requests are handled globally
 app.options('*', cors(corsOptions));
 
-// Explicitly handle OPTIONS preflight for the specific PIX endpoint to be
-// 100% sure a preflight receives CORS headers (some proxies may intercept
-// OPTIONS for other paths). This should run before any redirect middleware.
 app.options('/api/generate-pix', (req, res) => {
   try {
     const originHeader = req.headers && req.headers.origin ? String(req.headers.origin) : (FRONTEND_ORIGIN || '*');
@@ -82,23 +70,17 @@ app.options('/api/generate-pix', (req, res) => {
   }
 });
 
-// Diagnostic endpoint: returns observed headers and echoes CORS headers so you can
-// call it from browser / curl to verify proxy behavior and preflight handling.
 app.all('/api/debug-cors', (req, res) => {
   const originHeader = req.headers && req.headers.origin ? String(req.headers.origin) : (FRONTEND_ORIGIN || '*');
   console.log('DEBUG-CORS:', req.method, 'origin=', originHeader);
-  // set same CORS headers we use for other endpoints
   res.setHeader('Access-Control-Allow-Origin', originHeader);
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization,x-idempotency-key,x-hub-signature-256,x-hub-signature,x-signature,x-driven-signature,x-admin-token');
   res.setHeader('Vary', 'Origin');
-
   if (req.method === 'OPTIONS') return res.sendStatus(204);
-
   return res.json({ ok: true, method: req.method, originReceived: originHeader, headers: req.headers });
 });
 
-// Explicitly handle OPTIONS preflight for /api/* early to ensure required CORS headers
 app.use('/api', (req, res, next) => {
   if (req.method === 'OPTIONS') {
     const originHeader = req.headers && req.headers.origin ? String(req.headers.origin) : (FRONTEND_ORIGIN || '*');
@@ -111,12 +93,10 @@ app.use('/api', (req, res, next) => {
   return next();
 });
 
-// Safety: ensure API responses always have CORS header (fallback)
 app.use((req, res, next) => {
   try {
     const hdr = res.getHeader && res.getHeader('Access-Control-Allow-Origin');
     if (!hdr) {
-      // If the request provides an Origin header, echo it back; otherwise fallback to configured FRONTEND_ORIGIN or '*'.
       const originHeader = req.headers && req.headers.origin ? String(req.headers.origin) : (FRONTEND_ORIGIN || '*');
       res.setHeader('Access-Control-Allow-Origin', originHeader);
       res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
@@ -126,11 +106,9 @@ app.use((req, res, next) => {
   return next();
 });
 
-// Parse JSON and URL-encoded bodies so the endpoint accepts both
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Redirect HTTP to HTTPS in production when behind a proxy/load-balancer
 app.set('trust proxy', true);
 if (process.env.NODE_ENV === 'production') {
   app.use((req, res, next) => {
@@ -143,30 +121,22 @@ if (process.env.NODE_ENV === 'production') {
   });
 }
 
-// Admin auth middleware: requires ADMIN_TOKEN env var. Supports Authorization: Bearer <token> or x-admin-token header.
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || '';
 function adminAuthMiddleware(req, res, next) {
-  // If no ADMIN_TOKEN configured, allow in non-production (dev) for convenience
   if (!ADMIN_TOKEN && process.env.NODE_ENV !== 'production') return next();
-
   const authHeader = req.headers.authorization || '';
   const bearer = String(authHeader).startsWith('Bearer ') ? String(authHeader).slice(7).trim() : null;
   const headerToken = req.headers['x-admin-token'] || null;
   const token = bearer || headerToken;
-
   if (!token || token !== ADMIN_TOKEN) {
     return res.status(401).json({ error: 'Unauthorized: admin token required' });
   }
   return next();
 }
 
-// Admin logo storage (simple file-backed store). Stores a base64 data + mime
-// so the frontend admin can upload a logo and the server will serve it at
-// /api/admin/logo for use in the PWA manifest and installs.
 const LOGO_DIR = path.join(process.cwd(), 'data');
 const LOGO_STORE = path.join(LOGO_DIR, 'logo.json');
 
-// Ensure data directory exists
 (async () => {
   try { await fs.promises.mkdir(LOGO_DIR, { recursive: true }); } catch (e) { /* ignore */ }
 })();
@@ -175,16 +145,11 @@ app.post('/api/admin/logo', adminAuthMiddleware, async (req, res) => {
   try {
     const { dataUrl } = req.body || {};
     if (!dataUrl || typeof dataUrl !== 'string') return res.status(400).json({ error: 'dataUrl is required' });
-
     const m = dataUrl.match(/^data:(image\/[a-zA-Z0-9+.-]+);base64,(.+)$/);
     if (!m) return res.status(400).json({ error: 'invalid dataUrl' });
-
     const mime = m[1];
     const b64 = m[2];
-
     await fs.promises.writeFile(LOGO_STORE, JSON.stringify({ mime, b64 }, null, 2), 'utf8');
-
-    // Also write a copy to public so the manifest/favicon can use it directly.
     try {
       const publicPath = path.join(process.cwd(), 'public', 'logotipoaezap.ico');
       const buf = Buffer.from(b64, 'base64');
@@ -192,9 +157,7 @@ app.post('/api/admin/logo', adminAuthMiddleware, async (req, res) => {
       console.log('Wrote public logo to', publicPath);
     } catch (writeErr) {
       console.warn('Failed to write public logo file:', writeErr);
-      // Not fatal; continue
     }
-
     return res.json({ ok: true });
   } catch (err) {
     console.error('Failed to save admin logo:', err);
@@ -206,7 +169,6 @@ app.get('/api/admin/logo', adminAuthMiddleware, async (req, res) => {
   try {
     const exists = await fs.promises.stat(LOGO_STORE).then(() => true).catch(() => false);
     if (!exists) {
-      // Fallback to public placeholder
       const placeholder = path.join(process.cwd(), 'public', 'placeholder.svg');
       if (await fs.promises.stat(placeholder).then(() => true).catch(() => false)) {
         const data = await fs.promises.readFile(placeholder);
@@ -215,7 +177,6 @@ app.get('/api/admin/logo', adminAuthMiddleware, async (req, res) => {
       }
       return res.status(404).end();
     }
-
     const txt = await fs.promises.readFile(LOGO_STORE, 'utf8');
     const obj = JSON.parse(txt || '{}');
     if (!obj || !obj.b64 || !obj.mime) return res.status(404).end();
@@ -228,10 +189,7 @@ app.get('/api/admin/logo', adminAuthMiddleware, async (req, res) => {
   }
 });
 
-
-// Access token (MANDATORY in production). Do NOT keep a hardcoded fallback.
 const ACCESS_TOKEN = process.env.MERCADO_PAGO_ACCESS_TOKEN;
-// Log token type (masked) for diagnostics (do not print the full secret)
 try {
   const t = String(ACCESS_TOKEN || '');
   const type = t.startsWith('TEST-') ? 'TEST' : (t.startsWith('APP_USR-') ? 'LIVE' : 'UNKNOWN');
@@ -239,40 +197,29 @@ try {
   console.log('Using Mercado Pago token:', masked, 'type:', type);
 } catch (e) {}
 if (!ACCESS_TOKEN) {
-  console.error('ERROR: MERCADO_PAGO_ACCESS_TOKEN is not set. Set it in the environment or .env file. Aborting startup.');
+  console.error('ERROR: MERCADO_PAGO_ACCESS_TOKEN is not set. Aborting startup.');
   process.exit(1);
 }
 
-// Configure mercadopago SDK
 mercadopago.configurations.setAccessToken(ACCESS_TOKEN);
 
-// Backward-compatible: also support MP_ACCESS_TOKEN env var requested by new endpoints
 if (!process.env.MP_ACCESS_TOKEN && process.env.MERCADO_PAGO_ACCESS_TOKEN) {
   process.env.MP_ACCESS_TOKEN = process.env.MERCADO_PAGO_ACCESS_TOKEN;
 }
-// If MP_ACCESS_TOKEN is provided use it for new routes
 const MP_ACCESS_TOKEN = process.env.MP_ACCESS_TOKEN || ACCESS_TOKEN;
 if (MP_ACCESS_TOKEN && MP_ACCESS_TOKEN !== ACCESS_TOKEN) {
   try { mercadopago.configurations.setAccessToken(MP_ACCESS_TOKEN); } catch (e) { /* ignore */ }
 }
 
-// Validate token at startup: call a light MP endpoint to verify credentials. If invalid, exit with a helpful message.
 async function validateMpToken() {
   try {
-  const res = await fetch('https://api.mercadopago.com/users/me', { headers: { 'Authorization': `Bearer ${ACCESS_TOKEN}` } });
+    const res = await fetch('https://api.mercadopago.com/users/me', { headers: { 'Authorization': `Bearer ${ACCESS_TOKEN}` } });
     if (res.status === 200) {
       console.log('Mercado Pago token validated (OK)');
       return true;
     }
     const text = await res.text();
     console.error('Mercado Pago token validation failed. Status:', res.status, 'Response:', text);
-    if (res.status === 401) {
-      console.error('Unauthorized: check if the token is live vs test and that it is correct for the intended environment.');
-    }
-    if (res.status === 404) {
-      console.error('Received 404 from Mercado Pago /v1/users/me — this can happen if the access token is invalid, belongs to a different account, or the endpoint is not available for that token type.');
-  console.error('Try validating the token manually with: curl -H "Authorization: Bearer <token>" https://api.mercadopago.com/users/me');
-    }
     return false;
   } catch (e) {
     console.error('Failed to validate Mercado Pago token at startup:', e);
@@ -280,11 +227,8 @@ async function validateMpToken() {
   }
 }
 
-// In-memory map for simulated payment statuses (dev)
 const simulatedPayments = new Map();
-// Dev auto-approve configuration (seconds). 0 = disabled
 const DEV_AUTO_APPROVE_SECONDS = Number(process.env.DEV_AUTO_APPROVE_SECONDS || '0');
-// Simple file-based store for payments (demo). In production, replace with a real DB.
 const PAYMENTS_DB = path.join(process.cwd(), 'payments.json');
 
 async function readPaymentsDb() {
@@ -311,9 +255,8 @@ async function getPaymentRecord(id) {
   return db[id] || null;
 }
 
-// Helper to call Mercado Pago REST API
 async function mpCreatePayment(body, idempotencyKey) {
-  const res = await fetch('https://api.mercadopago.com/payments', {
+  const res = await fetch('https://api.mercadopago.com/v1/payments', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -322,22 +265,18 @@ async function mpCreatePayment(body, idempotencyKey) {
     },
     body: JSON.stringify(body)
   });
-
   const text = await res.text();
-  let data
+  let data;
   try { data = JSON.parse(text) } catch(e) { data = { raw: text } }
   return { status: res.status, data };
 }
 
-// Helper: generate a local PIX payload + PNG. Used for dev fallback and dev-only endpoint.
 async function generateLocalPixPayload(orderId, amount) {
   try {
     const sanitizedAmount = Number(amount) || 0;
-    // A simple deterministic pseudo-pix payload for testing only
     const localCode = `00020126360014BR.GOV.BCB.PIX01${String(orderId).replace(/[^0-9]/g,'').slice(-14)}52040000530398654${String(Math.round(sanitizedAmount*100)).padStart(3,'0')}5802BR5925Empresa6009Cidade6108${String(Date.now()).slice(-8)}62070503***6304ABCD`;
     const qrPng = await QRCode.toDataURL(localCode, { width: 300 });
     const devId = `DEV-${Date.now()}`;
-    // store simulated payment
     simulatedPayments.set(devId, { status: 'pending', createdAt: Date.now() });
     try {
       await savePaymentRecord(devId, { id: devId, orderId, amount: sanitizedAmount, status: 'pending', createdAt: new Date().toISOString(), dev: true, fallback: true });
@@ -348,8 +287,6 @@ async function generateLocalPixPayload(orderId, amount) {
   }
 }
 
-// Dev-only endpoint to generate a local PIX QR (bypass Mercado Pago).
-// Enabled by default in non-production. To allow in production set ALLOW_DEV_PIX_ENDPOINT=1
 app.post('/api/generate-pix-dev', async (req, res) => {
   try {
     if (process.env.NODE_ENV === 'production' && process.env.ALLOW_DEV_PIX_ENDPOINT !== '1') {
@@ -366,10 +303,8 @@ app.post('/api/generate-pix-dev', async (req, res) => {
   }
 });
 
-// Main endpoint: only POST is allowed to create PIX payments
 app.post('/api/generate-pix', async (req, res) => {
   try {
-    // Suportar ambos os formatos de dados
     let amount, orderId, orderData;
     
     if (req.body.amount && req.body.orderId) {
@@ -392,12 +327,7 @@ app.post('/api/generate-pix', async (req, res) => {
       });
     }
 
-    // Build payment payload and ensure payer contains first_name, last_name and a valid email
-    // We generate a fake email using customer name and phone to satisfy Mercado Pago requirements
-    // without asking the user for a real email (format: nomeformatado.telefone@seudominio.com)
     const domain = process.env.MP_FAKE_EMAIL_DOMAIN || 'seudominio.com';
-
-    // Try multiple locations for customer name/phone (frontend may send orderData.customer)
     const rawName = (req.body.payer && (req.body.payer.first_name || req.body.payer.name))
       || (req.body.orderData && req.body.orderData.customer && req.body.orderData.customer.name)
       || (req.body.orderData && req.body.orderData.customer && req.body.orderData.customer.fullName)
@@ -409,45 +339,32 @@ app.post('/api/generate-pix', async (req, res) => {
       || req.body.phone
       || '';
 
-    // Normalize name: remove accents and extra spaces
     function normalizeName(s) {
       try {
         return String(s || '').normalize('NFD').replace(/\p{Diacritic}/gu, '').trim();
       } catch (e) {
-        // fallback for older Node: remove common accents range
         return String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
       }
     }
 
     const cleanedName = normalizeName(rawName || '');
     const nameParts = cleanedName.split(/\s+/).filter(Boolean);
-
-    // Determine first and last name according to rules
     const firstName = nameParts.length > 0 ? nameParts[0] : '';
     const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : 'Cliente';
-
-    // Prepare phone digits only for email local-part
     const phoneDigits = String(rawPhone || '').replace(/[^0-9]/g, '') || String(Date.now()).slice(-9);
-
-    // Format local name for email: use only the first name, lowercase, remove non-alphanum, replace spaces with dots
     const formattedLocalName = String(firstName || 'cliente')
       .toLowerCase()
       .normalize('NFD')
       .replace(/[\u0300-\u036f]/g, '')
       .replace(/[^a-z0-9]+/g, '')
       .replace(/^\.+|\.+$/g, '') || 'cliente';
-
-    // Construct fake email in the required format: nomeformatado.telefone@seudominio.com
     const fakeEmail = `${formattedLocalName}.${phoneDigits}@${domain}`;
 
     const paymentData = {
-      transaction_amount: Math.round(Number(amount) * 100) / 100, // Corrigir decimais
+      transaction_amount: Math.round(Number(amount) * 100) / 100,
       description: `Pedido #${orderId}`,
       payment_method_id: 'pix',
       payer: {
-        // Provide explicit first_name and last_name fields and the generated fake email.
-        // Mercado Pago requires payer.email for PIX; we generate a deterministic fake one so
-        // the payment won't be rejected while preserving user privacy.
         first_name: firstName || 'Cliente',
         last_name: lastName || 'Cliente',
         email: (req.body.payer && req.body.payer.email) || fakeEmail,
@@ -462,7 +379,6 @@ app.post('/api/generate-pix', async (req, res) => {
 
     const idempotencyKey = req.headers['x-idempotency-key'] || `idemp-${orderId}-${Date.now()}`;
 
-    // If using test token, create a simulated payment and return QR generated locally
     if (ACCESS_TOKEN && ACCESS_TOKEN.startsWith('TEST-')) {
       console.log('DEV: criando pagamento simulado para', orderId);
       const pix = '00020126360014BR.GOV.BCB.PIX0114+55119999999952040000530398654045.005802BR5925Empresa de Teste6009Sao Paulo61080540900062070503***6304ABCD';
@@ -492,7 +408,6 @@ app.post('/api/generate-pix', async (req, res) => {
       return res.json({ qrCodeBase64: qrPng.replace(/^data:image\/png;base64,/, ''), pixCopiaECola: pix, paymentId: devId });
     }
 
-    // Use official SDK to create payment
     try {
       const mpBody = {
         ...paymentData,
@@ -520,10 +435,8 @@ app.post('/api/generate-pix', async (req, res) => {
 
       const qr_base64 = transaction_data.qr_code_base64;
       const qr_code = transaction_data.qr_code;
-
       const paymentId = data.id || (data && data.transaction_details && data.transaction_details.id) || null;
       
-      // Salvar mesmo se rejeitado, mas tratar erro de arquivo
       try {
         await savePaymentRecord(String(paymentId || Date.now()), { 
           id: String(paymentId || ''), 
@@ -541,7 +454,6 @@ app.post('/api/generate-pix', async (req, res) => {
 
       tryBroadcastPayment({ id: String(paymentId || ''), orderId, amount, status: data.status || 'pending' });
 
-      // Log da resposta que será enviada
       console.log('🎯 Enviando resposta:', {
         qrCodeBase64: qr_base64 ? `Presente (${qr_base64.length} chars)` : 'Ausente',
         pixCopiaECola: qr_code ? `Presente (${qr_code.length} chars)` : 'Ausente',
@@ -549,7 +461,6 @@ app.post('/api/generate-pix', async (req, res) => {
         status: data.status
       });
 
-      // Retornar QR code mesmo se status for rejeitado (para teste)
       return res.json({ 
         qrCodeBase64: qr_base64, 
         pixCopiaECola: qr_code, 
@@ -560,14 +471,11 @@ app.post('/api/generate-pix', async (req, res) => {
       
     } catch (sdkErr) {
       console.error('Mercado Pago SDK create error', sdkErr && sdkErr.message ? sdkErr.message : sdkErr);
-
       const sdkMsg = String((sdkErr && sdkErr.message) || sdkErr || '').toLowerCase();
 
-      // If SDK reports account not enabled for PIX QR rendering, provide a clear message
       if (sdkMsg.includes('collector user') && sdkMsg.includes('key') && sdkMsg.includes('qr')) {
-        // Optional local fallback for testing: set ENABLE_LOCAL_PIX_FALLBACK=1 in env to allow local QR generation
         if (process.env.ENABLE_LOCAL_PIX_FALLBACK === '1') {
-          console.log('ENABLE_LOCAL_PIX_FALLBACK is set — generating local PIX QR as fallback');
+          console.log('ENABLE_LOCAL_PIX_FALLBACK is set – generating local PIX QR as fallback');
           try {
             const pix = `00020126360014BR.GOV.BCB.PIX01${String(orderId).slice(-14)}520400005303986540${String(paymentData.transaction_amount).replace('.','')}5802BR5925Empresa6009Cidade6108${String(Date.now()).slice(-8)}62070503***6304ABCD`;
             const qrPng = await QRCode.toDataURL(pix, { width: 300 });
@@ -580,24 +488,21 @@ app.post('/api/generate-pix', async (req, res) => {
             return res.status(500).json({ error: 'Local PIX fallback failed', detail: String(e) });
           }
         }
-
         return res.status(400).json({
           error: 'Mercado Pago configuration error',
-          detail: 'Collector account is not enabled for PIX QR generation. Enable PIX keys / QR for your Mercado Pago account. See: https://www.mercadopago[.]com.br/developers/pt/guides/online-payments/pix/overview'
+          detail: 'Collector account is not enabled for PIX QR generation.'
         });
       }
 
       if (String(sdkErr).toLowerCase().includes('unauthorized') || (sdkErr && sdkErr.status === 401)) {
-        return res.status(401).json({ error: 'Unauthorized', detail: 'Check your MERCADO_PAGO_ACCESS_TOKEN and environment (live vs test credentials).' });
+        return res.status(401).json({ error: 'Unauthorized', detail: 'Check your MERCADO_PAGO_ACCESS_TOKEN.' });
       }
 
-      // Fallback: try REST endpoint
       const body = Object.assign({}, paymentData, { external_reference: orderId });
       const { status, data } = await mpCreatePayment(body, idempotencyKey);
       console.log('MP fallback create status', status, 'data keys:', Object.keys(data));
 
       if (status >= 400) {
-        // Provide more helpful error detail when Mercado Pago REST returns an error
         return res.status(status).json({ error: 'Mercado Pago error', detail: data });
       }
       
@@ -638,14 +543,12 @@ app.get('/api/check-payment/:id', async (req, res) => {
   try {
     const id = req.params.id
     
-    // Se é um ID simulado DEV
     if (id && id.startsWith('DEV-')) {
       const entry = simulatedPayments.get(id);
       const status = entry ? entry.status : 'pending';
       return res.json({ status });
     }
 
-    // Consultar Mercado Pago
     const mpRes = await fetch(`https://api.mercadopago.com/v1/payments/${id}`, {
       headers: { 'Authorization': `Bearer ${ACCESS_TOKEN}` }
     });
@@ -664,20 +567,16 @@ app.get('/api/check-payment/:id', async (req, res) => {
   }
 });
 
-// Return helpful JSON for other HTTP methods on this path instead of HTML "Cannot GET" page
 app.all('/api/generate-pix', (req, res) => {
   if (req.method === 'POST') return res.status(405).json({ error: 'Invalid method' });
   return res.status(405).json({ error: 'Method Not Allowed', detail: 'Use POST on this endpoint to create a PIX payment' });
 });
 
-// New endpoint: check payment status by id (calls Mercado Pago)
 app.get('/status-pagamento/:id', async (req, res) => {
   try {
     const id = req.params.id
-
     if (!id) return res.status(400).json({ error: 'payment id é obrigatório' })
 
-    // Call Mercado Pago API to fetch payment
     const ACCESS = process.env.MP_ACCESS_TOKEN || process.env.MERCADO_PAGO_ACCESS_TOKEN || ''
     if (!ACCESS) return res.status(500).json({ error: 'MP access token não configurado' })
 
@@ -696,15 +595,12 @@ app.get('/status-pagamento/:id', async (req, res) => {
     const status = data.status || null
     const status_detail = data.status_detail || null
     const date_approved = data.date_approved || null
-
     const result = { status, status_detail }
     if (date_approved && (String(status).toLowerCase() === 'approved' || String(status).toLowerCase() === 'paid' || String(status).toLowerCase() === 'success')) {
       result.date_approved = date_approved
     }
 
-    // Persist and broadcast like webhook did
     try { await savePaymentRecord(String(id), { status: status, raw: data }); tryBroadcastPayment({ id: String(id), status, raw: data }); } catch (e) { /* ignore */ }
-
     return res.json(result)
   } catch (err) {
     console.error('/status-pagamento error', err)
@@ -712,21 +608,17 @@ app.get('/status-pagamento/:id', async (req, res) => {
   }
 })
 
-// Dev helper: manually approve a DEV payment
 app.post('/api/dev-approve/:id', (req, res) => {
   const id = req.params.id
   if (!id || !id.startsWith('DEV-')) return res.status(400).json({ error: 'Invalid dev id' })
   if (!simulatedPayments.has(id)) return res.status(404).json({ error: 'Dev id not found' })
   simulatedPayments.set(id, { status: 'approved', createdAt: Date.now() })
   console.log(`DEV: payment ${id} manually approved`)
-  // persist and notify
   savePaymentRecord(id, { id, status: 'approved', updatedAt: new Date().toISOString(), dev: true }).catch(e=>console.warn('save dev approve failed', e));
   tryBroadcastPayment({ id, status: 'approved', simulated: true });
   res.json({ ok: true, id, status: 'approved' })
 })
 
-// Webhook endpoint for Mercado Pago notifications
-// If WEBHOOK_SECRET is set, the request will be validated via HMAC-SHA256
 const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET || '';
 
 app.post('/api/webhook', express.json({ type: '*/*' }), async (req, res) => {
@@ -734,13 +626,11 @@ app.post('/api/webhook', express.json({ type: '*/*' }), async (req, res) => {
     const raw = JSON.stringify(req.body || {})
 
     if (WEBHOOK_SECRET) {
-      // Mercado Pago may send signature in different headers; try common ones
       const sig = req.headers['x-hub-signature-256'] || req.headers['x-hub-signature'] || req.headers['x-signature'] || req.headers['x-driven-signature'] || '';
       if (!sig) {
         console.warn('Webhook received without signature while WEBHOOK_SECRET is set');
         return res.status(400).send('Missing signature');
       }
-      // signature may be 'sha256=...' or raw; normalize
       const incoming = String(sig).replace(/^sha256=/i, '');
       const hmac = crypto.createHmac('sha256', WEBHOOK_SECRET).update(raw).digest('hex');
       if (hmac !== incoming) {
@@ -749,11 +639,9 @@ app.post('/api/webhook', express.json({ type: '*/*' }), async (req, res) => {
       }
     }
 
-    // Process payload
     const payload = req.body;
     console.log('Webhook payload:', payload);
 
-    // Try to extract resource id(s). Mercado Pago sends different shapes; handle common ones
     let paymentId = null;
     if (payload.data && payload.data.id) paymentId = String(payload.data.id);
     if (!paymentId && payload['id']) paymentId = String(payload['id']);
@@ -763,8 +651,7 @@ app.post('/api/webhook', express.json({ type: '*/*' }), async (req, res) => {
       return res.status(200).send('no-op');
     }
 
-    // Fetch payment status from Mercado Pago and update local record
-  const mpRes = await fetch(`https://api.mercadopago.com/payments/${paymentId}`, { headers: { 'Authorization': `Bearer ${ACCESS_TOKEN}` } });
+    const mpRes = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, { headers: { 'Authorization': `Bearer ${ACCESS_TOKEN}` } });
     const text = await mpRes.text();
     let data
     try { data = JSON.parse(text) } catch(e) { data = { raw: text } }
@@ -776,15 +663,13 @@ app.post('/api/webhook', express.json({ type: '*/*' }), async (req, res) => {
 
     await savePaymentRecord(paymentId, { status: data.status, raw: data });
     console.log('Webhook processed payment', paymentId, 'status', data.status);
-  // notify frontend via websocket
-  tryBroadcastPayment({ id: String(paymentId), status: data.status, raw: data });
-    // If payment is approved/paid, forward stored orderData to printing webhook if configured
+    tryBroadcastPayment({ id: String(paymentId), status: data.status, raw: data });
+    
     const printUrl = process.env.PRINT_WEBHOOK_URL;
     if (printUrl && (String(data.status).toLowerCase() === 'approved' || String(data.status).toLowerCase() === 'paid' || String(data.status).toLowerCase() === 'success')) {
       try {
         const rec = await getPaymentRecord(paymentId);
         if (rec && rec.orderData) {
-          // Post to print webhook (non-blocking but log result)
           try {
             const pRes = await fetch(printUrl, {
               method: 'POST',
@@ -814,9 +699,115 @@ app.post('/api/webhook', express.json({ type: '*/*' }), async (req, res) => {
   }
 });
 
-// Proxy endpoint to forward print requests to the configured print webhook.
-// This allows the browser to POST to the same origin and avoids CORS/preflight
-// issues when the external webhook doesn't set Access-Control-Allow-Origin.
+// ============================================
+// ENDPOINT PRINCIPAL DE IMPRESSÃO /api/print
+// ============================================
+app.post('/api/print', express.json({ type: '*/*' }), async (req, res) => {
+  const webhookUrl = process.env.PRINT_WEBHOOK_URL || 'https://n8nwebhook.aezap.site/webhook/impressao';
+  
+  console.log('📥 [/api/print] Requisição recebida');
+  console.log('🔗 Webhook URL:', webhookUrl);
+  
+  try {
+    // Validar body
+    if (!req.body || Object.keys(req.body).length === 0) {
+      console.error('❌ Body vazio');
+      return res.status(400).json({ 
+        success: false,
+        error: 'Body vazio',
+        message: 'Dados do pedido são obrigatórios'
+      });
+    }
+
+    // Validar orderId
+    if (!req.body.orderId) {
+      console.error('❌ orderId ausente');
+      return res.status(400).json({ 
+        success: false,
+        error: 'orderId é obrigatório' 
+      });
+    }
+
+    console.log('📦 OrderID:', req.body.orderId);
+    console.log('📦 Items:', req.body.items?.length || 0);
+    console.log('💰 Total:', req.body.totals?.total);
+
+    // Salvar último pedido (não bloquear)
+    try {
+      const lastPath = path.join(LOGO_DIR, 'last-print.json');
+      await fs.promises.writeFile(lastPath, JSON.stringify(req.body, null, 2), 'utf8');
+    } catch (e) {
+      console.warn('⚠️ Falha ao salvar backup:', e.message);
+    }
+
+    // Enviar para n8n
+    console.log('🚀 Enviando para n8n...');
+    const startTime = Date.now();
+
+    const upstream = await fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'User-Agent': 'Forneiro-Backend/1.0'
+      },
+      body: JSON.stringify(req.body),
+      timeout: 30000 // 30 segundos
+    });
+
+    const elapsed = Date.now() - startTime;
+    
+    console.log('📥 Resposta recebida:');
+    console.log('   Status:', upstream.status);
+    console.log('   Tempo:', elapsed, 'ms');
+
+    // Ler resposta
+    const text = await upstream.text().catch(() => '');
+    console.log('   Body length:', text.length);
+
+    if (!upstream.ok) {
+      console.error('❌ n8n retornou erro:', upstream.status);
+      return res.status(502).json({ 
+        success: false,
+        error: 'Erro no webhook n8n',
+        status: upstream.status,
+        detail: text.slice(0, 500),
+        orderId: req.body.orderId
+      });
+    }
+
+    // Sucesso
+    console.log('✅ Impressão enviada com sucesso!');
+    
+    try {
+      const json = JSON.parse(text || '{}');
+      return res.json({
+        success: true,
+        message: 'Pedido enviado para impressão',
+        orderId: req.body.orderId,
+        n8nResponse: json
+      });
+    } catch (e) {
+      return res.json({
+        success: true,
+        message: 'Pedido enviado para impressão',
+        orderId: req.body.orderId,
+        n8nResponse: text
+      });
+    }
+
+  } catch (err) {
+    console.error('❌ Erro crítico:', err.message);
+    console.error('Stack:', err.stack);
+    
+    return res.status(500).json({ 
+      success: false,
+      error: 'Erro ao processar impressão',
+      detail: err.message,
+      orderId: req.body.orderId || 'unknown'
+    });
+  }
+});
+
 app.post('/api/print-order', express.json({ type: '*/*' }), async (req, res) => {
   try {
     const printUrl = process.env.PRINT_WEBHOOK_URL;
@@ -825,7 +816,6 @@ app.post('/api/print-order', express.json({ type: '*/*' }), async (req, res) => 
       return res.status(400).json({ error: 'PRINT_WEBHOOK_URL not configured on server' });
     }
 
-    // Log incoming request for diagnostics (avoid logging huge payloads)
     try {
       const bodyPreview = JSON.stringify(req.body || {}).slice(0, 2000);
       console.log(`[PRINT PROXY] Forwarding order to ${printUrl}. bodyPreview=${bodyPreview}`);
@@ -833,7 +823,6 @@ app.post('/api/print-order', express.json({ type: '*/*' }), async (req, res) => 
       console.log('[PRINT PROXY] Forwarding order (could not serialize body preview)');
     }
 
-    // Forward the body to the configured print webhook
     let pRes;
     let text = '';
     try {
@@ -848,15 +837,12 @@ app.post('/api/print-order', express.json({ type: '*/*' }), async (req, res) => 
       return res.status(500).json({ error: 'Failed to reach print webhook', detail: String(fetchErr) });
     }
 
-    // Log proxied response for diagnostics
     console.log(`[PRINT PROXY] print webhook responded status=${pRes.status} bodyPreview=${String(text || '').slice(0,2000)}`);
 
     if (!pRes.ok) {
-      // Respond with upstream status and body for easier debugging
       return res.status(502).json({ error: 'Print webhook error', status: pRes.status, detail: text });
     }
 
-    // Return the proxied text (or empty) so client can inspect result if needed
     try {
       const json = JSON.parse(text || 'null');
       return res.json({ ok: true, proxied: json });
@@ -869,103 +855,6 @@ app.post('/api/print-order', express.json({ type: '*/*' }), async (req, res) => 
   }
 });
 
-// ============================================
-// ENDPOINT MELHORADO /api/print
-// ============================================
-app.post('/api/print', express.json({ type: '*/*' }), async (req, res) => {
-  try {
-    const webhookUrl = process.env.PRINT_WEBHOOK_URL || 'https://n8nwebhook.aezap.site/webhook/impressao';
-
-    if (!webhookUrl) {
-      console.error('❌ /api/print: PRINT_WEBHOOK_URL não configurado');
-      return res.status(400).json({ error: 'PRINT_WEBHOOK_URL not configured on server' });
-    }
-
-    // Log detalhado da requisição recebida
-    const origin = req.headers && req.headers.origin ? String(req.headers.origin) : '-';
-    console.log('📥 [/api/print] Requisição recebida');
-    console.log('   Origin:', origin);
-    console.log('   Content-Type:', req.headers['content-type']);
-    console.log('   Body keys:', Object.keys(req.body || {}));
-    console.log('   Webhook destino:', webhookUrl);
-
-    // Validar se o body não está vazio
-    if (!req.body || Object.keys(req.body).length === 0) {
-      console.error('❌ Body vazio recebido');
-      return res.status(400).json({ error: 'Body cannot be empty' });
-    }
-
-    // Salvar último pedido para debug (não bloquear)
-    try {
-      const lastPath = path.join(LOGO_DIR, 'last-print.json');
-      await fs.promises.writeFile(lastPath, JSON.stringify(req.body, null, 2), 'utf8');
-      console.log('💾 Pedido salvo em:', lastPath);
-    } catch (e) {
-      console.warn('⚠️ Falha ao salvar last-print.json:', e.message);
-    }
-
-    // Forward para o webhook n8n
-    console.log('📤 Enviando para n8n:', webhookUrl);
-    const startTime = Date.now();
-
-    const upstream = await fetch(String(webhookUrl), {
-      method: 'POST',
-      headers: { 
-        'Content-Type': 'application/json',
-        'User-Agent': 'Forneiro-Backend/1.0'
-      },
-      body: JSON.stringify(req.body)
-    });
-
-    const elapsed = Date.now() - startTime;
-    const text = await upstream.text().catch(() => '');
-    
-    console.log('📥 Resposta do n8n:');
-    console.log('   Status:', upstream.status);
-    console.log('   Tempo:', elapsed, 'ms');
-    console.log('   Body preview:', String(text || '').slice(0, 500));
-
-    // Verificar se a resposta foi bem-sucedida
-    if (!upstream.ok) {
-      console.error('❌ n8n retornou erro:', upstream.status);
-      return res.status(502).json({ 
-        error: 'Print webhook error', 
-        status: upstream.status, 
-        detail: text || 'Empty response'
-      });
-    }
-
-    // Verificar se a resposta não está vazia
-    if (!text || !String(text).trim()) {
-      console.warn('⚠️ n8n retornou resposta vazia');
-      return res.status(502).json({ 
-        error: 'Empty response from print webhook', 
-        status: upstream.status 
-      });
-    }
-
-    // Tentar parsear como JSON
-    try {
-      const json = JSON.parse(text);
-      console.log('✅ Impressão enviada com sucesso!');
-      return res.json(json);
-    } catch (e) {
-      // Se não for JSON mas retornou texto válido, aceitar
-      console.log('✅ Impressão enviada (resposta não-JSON)');
-      return res.send(text);
-    }
-
-  } catch (err) {
-    console.error('❌ Erro crítico no proxy /api/print:', err);
-    console.error('Stack:', err.stack);
-    return res.status(500).json({ 
-      error: 'Erro ao processar impressão',
-      detail: err.message 
-    });
-  }
-});
-
-// Test endpoint: forward the last saved print payload to the webhook and return result
 app.post('/api/print-test', async (req, res) => {
   try {
     const webhookUrl = process.env.PRINT_WEBHOOK_URL || 'https://n8nwebhook.aezap.site/webhook/impressao';
@@ -1002,8 +891,6 @@ app.post('/api/print-test', async (req, res) => {
   }
 });
 
-// Debug helper: echo back the received body so frontend can verify what is being sent.
-// Use this temporarily in production only for debugging then remove it.
 app.post('/api/print-echo', express.json({ type: '*/*' }), async (req, res) => {
   try {
     try {
@@ -1018,7 +905,6 @@ app.post('/api/print-echo', express.json({ type: '*/*' }), async (req, res) => {
   }
 });
 
-// New route: create payment via Mercado Pago PIX using MP_ACCESS_TOKEN
 async function createPaymentHandler(req, res) {
   try {
     const { transaction_amount, description, email, identificationType, identificationNumber } = req.body || {};
@@ -1027,16 +913,13 @@ async function createPaymentHandler(req, res) {
       return res.status(400).json({ error: 'Dados inválidos. transaction_amount, description e email são obrigatórios.' });
     }
 
-    // Ensure we have an access token
     const token = process.env.MP_ACCESS_TOKEN || process.env.MERCADO_PAGO_ACCESS_TOKEN || '';
     if (!token) {
       return res.status(500).json({ error: 'MP access token não configurado no servidor (env MP_ACCESS_TOKEN).' });
     }
 
-    // Generate a random idempotency key
     const idempotencyKey = `idemp-${crypto.randomBytes(12).toString('hex')}`;
 
-    // Build payment body
     const paymentBody = {
       transaction_amount: Number(transaction_amount),
       description: String(description),
@@ -1050,11 +933,9 @@ async function createPaymentHandler(req, res) {
       }
     };
 
-    // Use mercadopago SDK to create payment
     const mpRes = await mercadopago.payment.create(paymentBody, { headers: { 'x-idempotency-key': idempotencyKey } });
     const data = mpRes && mpRes.body ? mpRes.body : mpRes;
 
-    // Extract useful fields
     const paymentId = data.id || (data && data.transaction_details && data.transaction_details.id) || null;
     const status = data.status || null;
     const transaction_data = data.point_of_interaction && data.point_of_interaction.transaction_data;
@@ -1069,18 +950,15 @@ async function createPaymentHandler(req, res) {
   }
 }
 
-// Register both legacy and proxied paths
 app.post('/criar-pagamento', createPaymentHandler);
 app.post('/api/criar-pagamento', createPaymentHandler);
 
 const port = process.env.PORT || 3000
-const host = process.env.HOST || '0.0.0.0' // listen on IPv6 any (will accept IPv4 on dual-stack systems)
+const host = process.env.HOST || '0.0.0.0'
 
-// Create HTTP server so we can attach WebSocket server to the same listener
 import http from 'http';
 const server = http.createServer(app);
 
-// Setup WebSocket server
 const wss = new WebSocketServer({ server });
 const wsClients = new Set();
 
@@ -1092,7 +970,6 @@ wss.on('connection', (socket) => {
     console.log('WebSocket client disconnected');
   });
   socket.on('message', (msg) => {
-    // simple ping handling
     if (String(msg) === 'ping') socket.send('pong');
   });
 });
@@ -1106,15 +983,10 @@ function tryBroadcastPayment(payload) {
   }
 }
 
-// Update check-payment endpoint to broadcast
-// ...existing code...
-
-// Start server
 (async () => {
-  // Production: always validate Mercado Pago token at startup. Exit if invalid.
   const ok = await validateMpToken();
   if (!ok) {
-    console.error('Mercado Pago token invalid — server will not start. Fix MERCADO_PAGO_ACCESS_TOKEN and restart.');
+    console.error('Mercado Pago token invalid – server will not start. Fix MERCADO_PAGO_ACCESS_TOKEN and restart.');
     process.exit(1);
   }
   server.listen(port, host, () => console.log(`Server running on http://localhost:${port} (listening on ${host})`));
