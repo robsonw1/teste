@@ -47,13 +47,17 @@ const HalfPizzaModal = ({ isOpen, onClose, pizzas, onAddToCart, preSelectedFlavo
   const [showScrollHint, setShowScrollHint] = useState<boolean>(true);
 
   const scrollToSection = (el: HTMLElement | null) => {
-    if (!el) return;
-    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    el.classList.add('ring-2', 'ring-offset-2', 'ring-brand-yellow/60');
-    clearTimeout(highlightRef.current);
-    highlightRef.current = setTimeout(() => {
-      el.classList.remove('ring-2', 'ring-offset-2', 'ring-brand-yellow/60');
-    }, 1200);
+    try {
+      if (!el || !(el as any).isConnected) return;
+      try { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) {}
+      try { el.classList.add('ring-2', 'ring-offset-2', 'ring-brand-yellow/60'); } catch (e) {}
+      try { clearTimeout(highlightRef.current); } catch (e) {}
+      highlightRef.current = setTimeout(() => {
+        try { if ((el as any).isConnected) el.classList.remove('ring-2', 'ring-offset-2', 'ring-brand-yellow/60'); } catch (e) {}
+      }, 1200);
+    } catch (err) {
+      console.warn('scrollToSection failed defensively (half):', err);
+    }
   };
 
   useEffect(() => {
