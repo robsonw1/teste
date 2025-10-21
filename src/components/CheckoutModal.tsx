@@ -302,51 +302,53 @@ const CheckoutModal = ({ isOpen, onClose, items, subtotal, onOrderComplete }: Ch
       // Persist the current order data in state so other flows (webhook, print) can access it
       setCurrentOrderData(orderData);
 
-      // Post order summary to local proxy which forwards to the configured print
-      // webhook on the server. This avoids CORS/preflight problems from the
-      // browser when the external webhook doesn't set CORS headers.
-      const printWebhook = '/api/print'; // always use server proxy
+      // Send order summary to server proxy for printing. Log extensively but do
+      // not block order finalization if printing fails.
+      const printWebhook = '/api/print'; // ✅ Correto - sempre usar o proxy local
 
-      const resp = await fetch(printWebhook, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(orderData)
-      });
-
-      // If the request itself failed (non-2xx) treat as an error and do not advance
-      if (!resp.ok) {
-        // try to get body for debugging
-        let bodyText = '';
-        try { bodyText = await resp.text(); } catch (e) { /* noop */ }
-        console.error('Print webhook returned non-OK:', resp.status, bodyText);
-        toast({
-          title: 'Falha ao encaminhar para impressão',
-          description: `A impressão não pôde ser acionada (status ${resp.status}). Tente novamente ou contate a pizzaria.`,
-          variant: 'destructive'
+      try {
+        console.log('📤 Enviando pedido para impressão...');
+        console.log('Dados:', orderData);
+        
+        const resp = await fetch(printWebhook, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(orderData)
         });
-        return; // do not show success popup
-      }
 
-      // If server responded OK, try to parse JSON and check for proxy-level errors
-      let parsed: any = null;
-      const contentType = resp.headers.get('content-type') || '';
-      if (contentType.includes('application/json')) {
-        try { parsed = await resp.json(); } catch (e) { parsed = null; }
-      } else {
-        // non-JSON response is acceptable; leave parsed null
-      }
+        console.log('📥 Resposta recebida:', resp.status);
+        
+        if (!resp.ok) {
+          const errorText = await resp.text().catch(() => '<no-text>');
+          console.error('❌ Erro ao enviar:', errorText);
+          throw new Error(`Erro ao imprimir: ${resp.status}`);
+        }
 
-      // If the proxied endpoint explicitly returned an error shape, treat as failure
-      if (parsed && parsed.error) {
-        console.error('Print proxy returned error body:', parsed);
-        toast({
-          title: 'Erro na impressão',
-          description: parsed.detail || parsed.error || 'Resposta inválida do serviço de impressão.',
-          variant: 'destructive'
-        });
-        return;
+        // parse JSON when possible
+        let result: any = null;
+        const ct = resp.headers.get('content-type') || '';
+        if (ct.includes('application/json')) {
+          try { result = await resp.json(); } catch (e) { result = null; }
+        } else {
+          try { result = await resp.text(); } catch (e) { result = null; }
+        }
+
+        console.log('✅ Impressão enviada com sucesso:', result);
+        
+        // If the proxied endpoint explicitly returned an error shape, log it
+        if (result && typeof result === 'object' && result.error) {
+          console.error('Print proxy returned error body:', result);
+          toast({
+            title: 'Erro na impressão',
+            description: result.detail || result.error || 'Resposta inválida do serviço de impressão.',
+            variant: 'destructive'
+          });
+          // do not block finalization
+        }
+        
+      } catch (error) {
+        console.error('❌ Erro ao enviar para impressão:', error);
+        // Não bloquear a finalização do pedido por erro de impressão
       }
 
       // Success: prepare WhatsApp URL and show confirmation
