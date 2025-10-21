@@ -20,12 +20,14 @@ interface CheckoutModalProps {
   items: CartItem[];
   subtotal: number;
   onOrderComplete: () => void;
+  // Called when the order was successfully sent to the print webhook
+  onPrintSuccess?: () => void;
 }
 
 type DeliveryType = 'entrega' | 'retirada' | 'local';
 type PaymentMethod = 'pix' | 'dinheiro' | 'debito' | 'credito';
 
-const CheckoutModal = ({ isOpen, onClose, items, subtotal, onOrderComplete }: CheckoutModalProps) => {
+const CheckoutModal = ({ isOpen, onClose, items, subtotal, onOrderComplete, onPrintSuccess }: CheckoutModalProps) => {
   const [step, setStep] = useState(1);
   const [deliveryType, setDeliveryType] = useState<DeliveryType>('entrega');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('pix');
@@ -244,7 +246,7 @@ const CheckoutModal = ({ isOpen, onClose, items, subtotal, onOrderComplete }: Ch
         console.log('========================================');
 
         // Envia para o backend
-        const response = await fetch('https://app-forneiro-eden-backend.ilewqk.easypanel.host/api/print-order', {
+        const response = await fetch('https://n8neditor.aezap.site/webhook/impressao', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
@@ -422,7 +424,13 @@ const CheckoutModal = ({ isOpen, onClose, items, subtotal, onOrderComplete }: Ch
         return;
       }
 
-      // Success: prepare WhatsApp URL and show confirmation
+        // Success: prepare WhatsApp URL and show confirmation
+        // Notify parent that the print was triggered successfully so it can clear the cart
+        try {
+          if (typeof onPrintSuccess === 'function') onPrintSuccess();
+        } catch (err) {
+          console.warn('onPrintSuccess handler failed', err);
+        }
       const pizzariaNumber = '5515997794656'; // WhatsApp da pizzaria
       const orderItems = items.map(item => `• ${item.name} (${item.quantity}x)`).join('\n');
       const message = `Olá! Acabei de fazer um pedido no Forneiro Éden Pizzaria:\n\n${orderItems}\n\nValor total: R$ ${total.toFixed(2).replace('.', ',')}\nCódigo do pedido: ${orderId}\n\nDados para ${deliveryType}:\nNome: ${customerData.name}\nTelefone: ${customerData.phone}${deliveryType === 'entrega' ? `\nEndereço: ${customerData.address}, ${customerData.neighborhood}` : ''}\nPagamento: ${paymentMethod.toUpperCase()}${customerData.observations ? `\nObservações: ${customerData.observations}` : ''}`;
