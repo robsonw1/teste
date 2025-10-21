@@ -144,9 +144,8 @@ app.use((req, res, next) => {
   return next();
 });
 
-// Parse JSON and URL-encoded bodies so the endpoint accepts both
-// Middleware para JSON (aceita qualquer content-type) e urlencoded
-app.use(express.json({ type: '*/*' }));
+
+app.use(express.json()); // Processa apenas Content-Type: application/json
 app.use(express.urlencoded({ extended: true }));
 
 // Redirect HTTP to HTTPS in production when behind a proxy/load-balancer
