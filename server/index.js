@@ -901,6 +901,12 @@ app.post('/api/print', express.json({ type: '*/*' }), async (req, res) => {
 
     // forward the request body to the external webhook
     console.log('[/api/print] forwarding to', webhookUrl);
+    // Log an outgoing-style entry so it's easy to correlate in panel logs
+    try {
+      const ts = new Date().toISOString();
+      console.log(`HTTP ${ts} OUT POST ${webhookUrl}`);
+    } catch (e) { /* ignore */ }
+
     const upstream = await fetch(String(webhookUrl), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -909,6 +915,10 @@ app.post('/api/print', express.json({ type: '*/*' }), async (req, res) => {
 
     const text = await upstream.text().catch(() => '');
     console.log('[/api/print] upstream status=', upstream.status, 'bodyPreview=', String(text || '').slice(0,2000));
+    try {
+      const ts2 = new Date().toISOString();
+      console.log(`HTTP ${ts2} OUT POST ${webhookUrl} responded ${upstream.status}`);
+    } catch (e) { /* ignore */ }
 
     // Treat non-OK upstream or empty response as failure so frontend won't finalize
     if (!upstream.ok) {
@@ -930,6 +940,43 @@ app.post('/api/print', express.json({ type: '*/*' }), async (req, res) => {
   } catch (err) {
     console.error('Erro ao enviar para webhook (proxy):', err && err.stack ? err.stack : err);
     return res.status(500).json({ error: 'Erro ao processar impressão' });
+  }
+});
+
+// Test endpoint: forward the last saved print payload to the webhook and return result
+app.post('/api/print-test', async (req, res) => {
+  try {
+    const webhookUrl = process.env.PRINT_WEBHOOK_URL || 'https://n8nwebhook.aezap.site/webhook/impressao';
+    const lastPath = path.join(LOGO_DIR, 'last-print.json');
+    let payload = {};
+    try {
+      const txt = await fs.promises.readFile(lastPath, 'utf8');
+      payload = JSON.parse(txt || '{}');
+    } catch (e) {
+      console.warn('/api/print-test: could not read last-print.json', e && e.message ? e.message : e);
+      payload = req.body || { test: 'print-test' };
+    }
+
+    console.log('/api/print-test forwarding to', webhookUrl, 'payloadPreview=', JSON.stringify(payload).slice(0,2000));
+    const ts = new Date().toISOString();
+    console.log(`HTTP ${ts} OUT POST ${webhookUrl}`);
+
+    const upstream = await fetch(String(webhookUrl), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload || {})
+    });
+
+    const text = await upstream.text().catch(() => '');
+    console.log('/api/print-test upstream status=', upstream.status, 'bodyPreview=', String(text || '').slice(0,2000));
+    const ts2 = new Date().toISOString();
+    console.log(`HTTP ${ts2} OUT POST ${webhookUrl} responded ${upstream.status}`);
+
+    if (!upstream.ok) return res.status(502).json({ error: 'Print webhook error', status: upstream.status, detail: text });
+    try { return res.json(JSON.parse(text || 'null')); } catch (e) { return res.send(text || 'ok'); }
+  } catch (err) {
+    console.error('/api/print-test error', err && err.stack ? err.stack : err);
+    return res.status(500).json({ error: 'print-test failed', detail: String(err) });
   }
 });
 
