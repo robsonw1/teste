@@ -869,6 +869,17 @@ app.post('/api/print-order', express.json({ type: '*/*' }), async (req, res) => 
   }
 });
 
+// Rota de teste - ADICIONE ISTO
+app.get('/api/debug-env', (req, res) => {
+  res.json({
+    PRINT_WEBHOOK_URL: process.env.PRINT_WEBHOOK_URL || 'NOT SET',
+    VITE_PRINT_WEBHOOK_URL: process.env.VITE_PRINT_WEBHOOK_URL || 'NOT SET',
+    NODE_ENV: process.env.NODE_ENV,
+    PORT: process.env.PORT,
+    allEnvKeys: Object.keys(process.env).filter(k => k.includes('WEBHOOK') || k.includes('PRINT'))
+  });
+});
+
 // New route: create payment via Mercado Pago PIX using MP_ACCESS_TOKEN
 async function createPaymentHandler(req, res) {
   try {
