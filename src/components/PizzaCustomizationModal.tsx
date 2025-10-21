@@ -14,6 +14,7 @@ import { toast } from "@/hooks/use-toast";
 import { Product } from "@/data/products";
 import { useProducts } from "@/hooks/useProducts";
 import DevelopedBy from "@/components/DevelopedBy";
+import ScrollHint from "@/components/ui/ScrollHint";
 
 interface PizzaCustomizationModalProps {
   isOpen: boolean;
@@ -128,13 +129,14 @@ const PizzaCustomizationModal = ({ isOpen, onClose, pizza, onAddToCart, preSelec
   React.useEffect(() => {
     if (isOpen) {
       setStepIndex(0);
-      // show scroll hint only for Moda do Cliente (and optionally combo context)
-      const comboHint = !!allowedPizzaCategories && allowedPizzaCategories.includes('pizzas-promocionais');
-      setShowScrollHint(isModaCliente || comboHint);
+      // Show the scroll hint when the wizard contains the 'adicionais' step.
+      // This ensures the hint appears for normal pizzas on the 'adicionais' step.
+      const hasAdicionais = steps.includes('adicionais');
+      setShowScrollHint(!!hasAdicionais);
       // reset drink quantity unless a drink is already selected
       if (selectedDrink === 'sem-bebida') setDrinkQuantity(0);
     }
-  }, [isOpen, allowedPizzaCategories, isModaCliente]);
+  }, [isOpen, steps, isModaCliente, selectedDrink]);
 
   // If the user closes the modal mid-flow, clear all local selections so reopening starts fresh
   React.useEffect(() => {
@@ -421,6 +423,8 @@ const PizzaCustomizationModal = ({ isOpen, onClose, pizza, onAddToCart, preSelec
       <Dialog open={isOpen} onOpenChange={onClose}>
         <DialogContent className="max-w-2xl max-h-[90vh]">
           <div ref={contentRef} className="max-h-[90vh] overflow-y-auto p-4 relative">
+            {/* Scroll hint overlay: mostra apenas na etapa 'adicionais' */}
+            <ScrollHint show={steps[stepIndex] === 'adicionais' && showScrollHint} />
             <Separator />
 
   {/* Step: Tamanho, Tipo e Sabores (COMBINADO) */}
