@@ -881,6 +881,15 @@ app.post('/api/print', express.json({ type: '*/*' }), async (req, res) => {
       return res.status(400).json({ error: 'PRINT_WEBHOOK_URL not configured on server' });
     }
 
+    // Log incoming request preview for diagnostics
+    try {
+      const origin = req.headers && req.headers.origin ? String(req.headers.origin) : '-';
+      const bodyPreview = JSON.stringify(req.body || {}).slice(0, 2000);
+      console.log(`[/api/print] received request from origin=${origin} forwarding_to=${webhookUrl} bodyPreview=${bodyPreview}`);
+    } catch (e) {
+      console.log('[/api/print] received request (could not serialize body)');
+    }
+
     // forward the request body to the external webhook
     console.log('[/api/print] forwarding to', webhookUrl);
     const upstream = await fetch(String(webhookUrl), {
@@ -890,7 +899,7 @@ app.post('/api/print', express.json({ type: '*/*' }), async (req, res) => {
     });
 
     const text = await upstream.text().catch(() => '');
-    console.log('[/api/print] upstream status=', upstream.status);
+    console.log('[/api/print] upstream status=', upstream.status, 'bodyPreview=', String(text || '').slice(0,2000));
 
     if (!upstream.ok) {
       return res.status(502).json({ error: 'Print webhook error', status: upstream.status, detail: text });
@@ -905,6 +914,22 @@ app.post('/api/print', express.json({ type: '*/*' }), async (req, res) => {
   } catch (err) {
     console.error('Erro ao enviar para webhook (proxy):', err && err.stack ? err.stack : err);
     return res.status(500).json({ error: 'Erro ao processar impressão' });
+  }
+});
+
+// Debug helper: echo back the received body so frontend can verify what is being sent.
+// Use this temporarily in production only for debugging then remove it.
+app.post('/api/print-echo', express.json({ type: '*/*' }), async (req, res) => {
+  try {
+    try {
+      console.log('[/api/print-echo] received bodyPreview=', JSON.stringify(req.body || {}).slice(0,2000));
+    } catch (e) {
+      console.log('[/api/print-echo] received body (could not serialize)');
+    }
+    return res.json({ ok: true, received: req.body || null });
+  } catch (err) {
+    console.error('[/api/print-echo] error', err);
+    return res.status(500).json({ error: 'echo failed' });
   }
 });
 
