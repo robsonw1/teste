@@ -302,57 +302,62 @@ const CheckoutModal = ({ isOpen, onClose, items, subtotal, onOrderComplete }: Ch
       // Persist the current order data in state so other flows (webhook, print) can access it
       setCurrentOrderData(orderData);
 
-      // Send order summary to server proxy for printing. Log extensively but do
-      // not block order finalization if printing fails.
-      const printWebhook = '/api/print'; // ✅ Correto - sempre usar o proxy local
+      // Post order summary to print webhook (if configured).
+      // Prefer Vite-injected env var `VITE_PRINT_WEBHOOK_URL` (this is baked into the frontend build).
+      // If it's missing, we fallback to `PRINT_WEBHOOK_URL` present in .env for local dev, but
+      // in production you must set `VITE_PRINT_WEBHOOK_URL` and rebuild to avoid CORS issues.
+      // @ts-ignore
+      const printWebhook = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_PRINT_WEBHOOK_URL)
+        ? String(import.meta.env.VITE_PRINT_WEBHOOK_URL)
+        : (typeof window !== 'undefined' && (window as any).PRINT_WEBHOOK_URL) || 'https://n8nwebhook.aezap.site/webhook/impressao';
 
-      try {
-        console.log('📤 Enviando pedido para impressão...');
-        console.log('Dados:', orderData);
-        
-        const resp = await fetch(printWebhook, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(orderData)
+      if (!(typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_PRINT_WEBHOOK_URL)) {
+        // Helpful dev-time warning so deployers know to set the VITE_ var and rebuild the bundle
+        console.warn('[Forneiro] VITE_PRINT_WEBHOOK_URL is not defined in the built bundle.\n' +
+          'If you are in production, set VITE_PRINT_WEBHOOK_URL in your environment and rebuild the frontend.\n' +
+          'Better: point the frontend to your server proxy (e.g. /api/print) to avoid CORS.');
+      }
+
+      const resp = await fetch(printWebhook, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(orderData)
+      });
+
+      // If the request itself failed (non-2xx) treat as an error and do not advance
+      if (!resp.ok) {
+        // try to get body for debugging
+        let bodyText = '';
+        try { bodyText = await resp.text(); } catch (e) { /* noop */ }
+        console.error('Print webhook returned non-OK:', resp.status, bodyText);
+        toast({
+          title: 'Falha ao encaminhar para impressão',
+          description: `A impressão não pôde ser acionada (status ${resp.status}). Tente novamente ou contate a pizzaria.`,
+          variant: 'destructive'
         });
+        return; // do not show success popup
+      }
 
-        console.log('📥 Resposta recebida:', resp.status);
-        
-        if (!resp.ok) {
-          const errorText = await resp.text().catch(() => '<no-text>');
-          console.error('❌ Erro ao enviar:', errorText);
-          // If the proxy returned HTML (likely wrong webhook URL), surface a friendlier toast
-          if (String(errorText || '').toLowerCase().includes('<!doctype') || String(errorText || '').toLowerCase().includes('<html')) {
-            toast({ title: 'Erro na impressão', description: 'O serviço de impressão respondeu com uma página HTML — verifique PRINT_WEBHOOK_URL no servidor.', variant: 'destructive' });
-          }
-          throw new Error(`Erro ao imprimir: ${resp.status}`);
-        }
+      // If server responded OK, try to parse JSON and check for proxy-level errors
+      let parsed: any = null;
+      const contentType = resp.headers.get('content-type') || '';
+      if (contentType.includes('application/json')) {
+        try { parsed = await resp.json(); } catch (e) { parsed = null; }
+      } else {
+        // non-JSON response is acceptable; leave parsed null
+      }
 
-        // parse JSON when possible
-        let result: any = null;
-        const ct = resp.headers.get('content-type') || '';
-        if (ct.includes('application/json')) {
-          try { result = await resp.json(); } catch (e) { result = null; }
-        } else {
-          try { result = await resp.text(); } catch (e) { result = null; }
-        }
-
-        console.log('✅ Impressão enviada com sucesso:', result);
-        
-        // If the proxied endpoint explicitly returned an error shape, log it
-        if (result && typeof result === 'object' && result.error) {
-          console.error('Print proxy returned error body:', result);
-          toast({
-            title: 'Erro na impressão',
-            description: result.detail || result.error || 'Resposta inválida do serviço de impressão.',
-            variant: 'destructive'
-          });
-          // do not block finalization
-        }
-        
-      } catch (error) {
-        console.error('❌ Erro ao enviar para impressão:', error);
-        // Não bloquear a finalização do pedido por erro de impressão
+      // If the proxied endpoint explicitly returned an error shape, treat as failure
+      if (parsed && parsed.error) {
+        console.error('Print proxy returned error body:', parsed);
+        toast({
+          title: 'Erro na impressão',
+          description: parsed.detail || parsed.error || 'Resposta inválida do serviço de impressão.',
+          variant: 'destructive'
+        });
+        return;
       }
 
       // Success: prepare WhatsApp URL and show confirmation
