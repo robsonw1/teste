@@ -14,6 +14,20 @@ dotenv.config();
 
 const app = express();
 
+// ========================================
+// CONFIGURAÇÃO DE CORS (ADICIONADO CONFORME SOLICITAÇÃO)
+// ========================================
+app.use(cors({
+  origin: [
+    'https://app-forneiro-eden-frontend.ilewqk.easypanel.host',
+    'http://localhost:5173', // Para desenvolvimento local
+  ],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true
+}));
+
+
 // Simple request logger to diagnose if requests (including OPTIONS) reach this app
 app.use((req, res, next) => {
   try {
@@ -127,7 +141,8 @@ app.use((req, res, next) => {
 });
 
 // Parse JSON and URL-encoded bodies so the endpoint accepts both
-app.use(express.json());
+// Middleware para JSON (aceita qualquer content-type) e urlencoded
+app.use(express.json({ type: '*/*' }));
 app.use(express.urlencoded({ extended: true }));
 
 // Redirect HTTP to HTTPS in production when behind a proxy/load-balancer
@@ -869,16 +884,6 @@ app.post('/api/print-order', express.json({ type: '*/*' }), async (req, res) => 
   }
 });
 
-// Rota de teste - ADICIONE ISTO
-app.get('/api/debug-env', (req, res) => {
-  res.json({
-    PRINT_WEBHOOK_URL: process.env.PRINT_WEBHOOK_URL || 'NOT SET',
-    VITE_PRINT_WEBHOOK_URL: process.env.VITE_PRINT_WEBHOOK_URL || 'NOT SET',
-    NODE_ENV: process.env.NODE_ENV,
-    PORT: process.env.PORT,
-    allEnvKeys: Object.keys(process.env).filter(k => k.includes('WEBHOOK') || k.includes('PRINT'))
-  });
-});
 
 // New route: create payment via Mercado Pago PIX using MP_ACCESS_TOKEN
 async function createPaymentHandler(req, res) {
