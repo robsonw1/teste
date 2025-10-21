@@ -35,6 +35,7 @@ const CheckoutModal = ({ isOpen, onClose, items, subtotal, onOrderComplete }: Ch
   const [currentOrderId, setCurrentOrderId] = useState<string | null>(null);
   const [currentOrderData, setCurrentOrderData] = useState<any>(null);
   const [whatsappUrl, setWhatsappUrl] = useState<string | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
   
   const [customerData, setCustomerData] = useState({
     name: '',
@@ -211,7 +212,85 @@ const CheckoutModal = ({ isOpen, onClose, items, subtotal, onOrderComplete }: Ch
   };
 
   const handleOrderSubmit = async () => {
-    const orderId = Date.now().toString();
+    // Temporary debug/send block will run before the normal proxy flow for non-PIX payments
+    const handleConfirmOrder = async () => {
+      try {
+        setIsProcessing(true);
+        
+        // Monta os dados do pedido
+        const orderData = {
+          pedidoId: `PEDIDO-${Date.now()}`,
+          items: items.map(item => ({
+            nome: item.name,
+            quantidade: item.quantity,
+            preco: item.price,
+            subtotal: item.price * item.quantity
+          })),
+          total: total,
+          cliente: {
+            nome: customerData.name || 'Cliente',
+            telefone: customerData.phone || '',
+            endereco: customerData.address || ''
+          },
+          formaPagamento: paymentMethod,
+          observacoes: customerData.observations || '',
+          dataHora: new Date().toISOString()
+        };
+
+        console.log('========================================');
+        console.log('🎯 INICIANDO ENVIO DO PEDIDO');
+        console.log('📦 Dados do pedido:', JSON.stringify(orderData, null, 2));
+        console.log('🌐 URL do backend:', '/api/print-order');
+        console.log('========================================');
+
+        // Envia para o backend
+        const response = await fetch('/api/print-order', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(orderData)
+        });
+
+        console.log('📊 Status HTTP:', response.status);
+        console.log('📊 Status Text:', response.statusText);
+        console.log('📊 Headers:', Object.fromEntries(response.headers.entries()));
+
+        let responseData;
+        const contentType = response.headers.get('content-type');
+        
+        if (contentType && contentType.includes('application/json')) {
+          responseData = await response.json();
+          console.log('📄 Resposta JSON:', responseData);
+        } else {
+          const text = await response.text();
+          console.log('📄 Resposta TEXT:', text);
+          responseData = { text };
+        }
+
+        if (!response.ok) {
+          console.error('❌ Erro na resposta:', responseData);
+          throw new Error(`Erro ${response.status}: ${JSON.stringify(responseData)}`);
+        }
+
+        console.log('✅ PEDIDO ENVIADO COM SUCESSO!');
+        console.log('========================================');
+
+        // Resto do seu código de sucesso...
+        // showSuccessMessage, etc.
+
+      } catch (error: any) {
+        console.error('========================================');
+        console.error('❌ ERRO COMPLETO:');
+        console.error('Mensagem:', error.message);
+        console.error('Stack:', error.stack);
+        console.error('========================================');
+        // Mostra erro para o usuário
+      } finally {
+        setIsProcessing(false);
+      }
+    };
+  const orderId = Date.now().toString();
     const orderData = {
       orderId,
       // Estrutura items conforme esperado pelo backend
@@ -256,7 +335,7 @@ const CheckoutModal = ({ isOpen, onClose, items, subtotal, onOrderComplete }: Ch
     };
 
     // Se o método de pagamento for PIX, abrir o modal do PIX com dados estruturados
-    if (paymentMethod === 'pix') {
+  if (paymentMethod === 'pix') {
       // Debug: Verificar dados antes de abrir modal PIX
       console.log('🔍 DEBUG - Dados do pedido:', {
         items,
@@ -299,6 +378,8 @@ const CheckoutModal = ({ isOpen, onClose, items, subtotal, onOrderComplete }: Ch
     }
 
     try {
+      // run temporary debug sender for non-pix payments (will also run for pix but PIX returns earlier above)
+      await handleConfirmOrder();
       // Persist the current order data in state so other flows (webhook, print) can access it
       setCurrentOrderData(orderData);
 
