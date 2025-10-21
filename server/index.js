@@ -15,17 +15,21 @@ dotenv.config();
 const app = express();
 
 // ========================================
-// CONFIGURAÇÃO DE CORS (ADICIONADO CONFORME SOLICITAÇÃO)
+// CORS - MIDDLEWARE MANUAL (ADICIONADO NO INÍCIO)
 // ========================================
-app.use(cors({
-  origin: [
-    'https://app-forneiro-eden-frontend.ilewqk.easypanel.host',
-    'http://localhost:5173', // Para desenvolvimento local
-  ],
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true
-}));
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', 'https://app-forneiro-eden-frontend.ilewqk.easypanel.host');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.header('Access-Control-Allow-Credentials', 'true');
+
+  // Handle preflight requests
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+
+  next();
+});
 
 
 // Simple request logger to diagnose if requests (including OPTIONS) reach this app
