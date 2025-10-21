@@ -329,6 +329,43 @@ async function mpCreatePayment(body, idempotencyKey) {
   return { status: res.status, data };
 }
 
+// Helper: generate a local PIX payload + PNG. Used for dev fallback and dev-only endpoint.
+async function generateLocalPixPayload(orderId, amount) {
+  try {
+    const sanitizedAmount = Number(amount) || 0;
+    // A simple deterministic pseudo-pix payload for testing only
+    const localCode = `00020126360014BR.GOV.BCB.PIX01${String(orderId).replace(/[^0-9]/g,'').slice(-14)}52040000530398654${String(Math.round(sanitizedAmount*100)).padStart(3,'0')}5802BR5925Empresa6009Cidade6108${String(Date.now()).slice(-8)}62070503***6304ABCD`;
+    const qrPng = await QRCode.toDataURL(localCode, { width: 300 });
+    const devId = `DEV-${Date.now()}`;
+    // store simulated payment
+    simulatedPayments.set(devId, { status: 'pending', createdAt: Date.now() });
+    try {
+      await savePaymentRecord(devId, { id: devId, orderId, amount: sanitizedAmount, status: 'pending', createdAt: new Date().toISOString(), dev: true, fallback: true });
+    } catch (e) { /* ignore */ }
+    return { pix: localCode, qrBase64: qrPng.replace(/^data:image\/png;base64,/, ''), paymentId: devId };
+  } catch (e) {
+    throw e;
+  }
+}
+
+// Dev-only endpoint to generate a local PIX QR (bypass Mercado Pago).
+// Enabled by default in non-production. To allow in production set ALLOW_DEV_PIX_ENDPOINT=1
+app.post('/api/generate-pix-dev', async (req, res) => {
+  try {
+    if (process.env.NODE_ENV === 'production' && process.env.ALLOW_DEV_PIX_ENDPOINT !== '1') {
+      return res.status(403).json({ error: 'Dev endpoint disabled in production' });
+    }
+    const amount = req.body.amount || req.body.transaction_amount || 0;
+    const orderId = req.body.orderId || (`DEV-${Date.now()}`);
+    console.log('DEV PIX endpoint requested for', orderId, amount);
+    const { pix, qrBase64, paymentId } = await generateLocalPixPayload(orderId, amount);
+    return res.json({ qrCodeBase64: qrBase64, pixCopiaECola: pix, paymentId, fallback: true });
+  } catch (err) {
+    console.error('/api/generate-pix-dev error', err);
+    return res.status(500).json({ error: 'failed to generate dev pix', detail: String(err) });
+  }
+});
+
 // Main endpoint: only POST is allowed to create PIX payments
 app.post('/api/generate-pix', async (req, res) => {
   try {
@@ -774,6 +811,100 @@ app.post('/api/webhook', express.json({ type: '*/*' }), async (req, res) => {
   } catch (e) {
     console.error('Webhook processing error', e);
     res.status(500).send('error');
+  }
+});
+
+// Proxy endpoint to forward print requests to the configured print webhook.
+// This allows the browser to POST to the same origin and avoids CORS/preflight
+// issues when the external webhook doesn't set Access-Control-Allow-Origin.
+app.post('/api/print-order', express.json({ type: '*/*' }), async (req, res) => {
+  try {
+    const printUrl = process.env.PRINT_WEBHOOK_URL;
+    if (!printUrl) {
+      console.error('/api/print-order called but PRINT_WEBHOOK_URL is not set');
+      return res.status(400).json({ error: 'PRINT_WEBHOOK_URL not configured on server' });
+    }
+
+    // Log incoming request for diagnostics (avoid logging huge payloads)
+    try {
+      const bodyPreview = JSON.stringify(req.body || {}).slice(0, 2000);
+      console.log(`[PRINT PROXY] Forwarding order to ${printUrl}. bodyPreview=${bodyPreview}`);
+    } catch (e) {
+      console.log('[PRINT PROXY] Forwarding order (could not serialize body preview)');
+    }
+
+    // Forward the body to the configured print webhook
+    let pRes;
+    let text = '';
+    try {
+      pRes = await fetch(String(printUrl), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(req.body || {})
+      });
+      text = await pRes.text().catch(() => '');
+    } catch (fetchErr) {
+      console.error('[PRINT PROXY] fetch to print webhook failed', fetchErr && fetchErr.stack ? fetchErr.stack : fetchErr);
+      return res.status(500).json({ error: 'Failed to reach print webhook', detail: String(fetchErr) });
+    }
+
+    // Log proxied response for diagnostics
+    console.log(`[PRINT PROXY] print webhook responded status=${pRes.status} bodyPreview=${String(text || '').slice(0,2000)}`);
+
+    if (!pRes.ok) {
+      // Respond with upstream status and body for easier debugging
+      return res.status(502).json({ error: 'Print webhook error', status: pRes.status, detail: text });
+    }
+
+    // Return the proxied text (or empty) so client can inspect result if needed
+    try {
+      const json = JSON.parse(text || 'null');
+      return res.json({ ok: true, proxied: json });
+    } catch (e) {
+      return res.send(text || 'ok');
+    }
+  } catch (err) {
+    console.error('Failed to proxy print webhook (unexpected)', err && err.stack ? err.stack : err);
+    return res.status(500).json({ error: 'Failed to proxy print webhook', detail: String(err) });
+  }
+});
+
+// Simple proxy endpoint that frontend can call to avoid CORS when invoking the
+// external print webhook. This endpoint mirrors the external webhook response
+// (attempting to parse JSON) and returns 502 when upstream fails.
+app.post('/api/print', express.json({ type: '*/*' }), async (req, res) => {
+  try {
+    const webhookUrl = process.env.PRINT_WEBHOOK_URL || 'https://n8nwebhook.aezap.site/webhook/impressao';
+
+    if (!webhookUrl) {
+      console.error('/api/print called but PRINT_WEBHOOK_URL is not configured');
+      return res.status(400).json({ error: 'PRINT_WEBHOOK_URL not configured on server' });
+    }
+
+    // forward the request body to the external webhook
+    console.log('[/api/print] forwarding to', webhookUrl);
+    const upstream = await fetch(String(webhookUrl), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(req.body || {})
+    });
+
+    const text = await upstream.text().catch(() => '');
+    console.log('[/api/print] upstream status=', upstream.status);
+
+    if (!upstream.ok) {
+      return res.status(502).json({ error: 'Print webhook error', status: upstream.status, detail: text });
+    }
+
+    try {
+      const json = JSON.parse(text || 'null');
+      return res.json(json === null ? { ok: true } : json);
+    } catch (e) {
+      return res.send(text || 'ok');
+    }
+  } catch (err) {
+    console.error('Erro ao enviar para webhook (proxy):', err && err.stack ? err.stack : err);
+    return res.status(500).json({ error: 'Erro ao processar impressão' });
   }
 });
 
