@@ -302,61 +302,42 @@ const CheckoutModal = ({ isOpen, onClose, items, subtotal, onOrderComplete }: Ch
       // Persist the current order data in state so other flows (webhook, print) can access it
       setCurrentOrderData(orderData);
 
-      // Post order summary to print webhook (if configured).
-      // Prefer Vite-injected env var `VITE_PRINT_WEBHOOK_URL` (this is baked into the frontend build).
-      // If it's missing, we fallback to `PRINT_WEBHOOK_URL` present in .env for local dev, but
-      // in production you must set `VITE_PRINT_WEBHOOK_URL` and rebuild to avoid CORS issues.
-      // @ts-ignore
-      const printWebhook = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_PRINT_WEBHOOK_URL)
-        ? String(import.meta.env.VITE_PRINT_WEBHOOK_URL)
-        : (typeof window !== 'undefined' && (window as any).PRINT_WEBHOOK_URL) || 'https://n8nwebhook.aezap.site/webhook/impressao';
-
-      if (!(typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_PRINT_WEBHOOK_URL)) {
-        // Helpful dev-time warning so deployers know to set the VITE_ var and rebuild the bundle
-        console.warn('[Forneiro] VITE_PRINT_WEBHOOK_URL is not defined in the built bundle.\n' +
-          'If you are in production, set VITE_PRINT_WEBHOOK_URL in your environment and rebuild the frontend.\n' +
-          'Better: point the frontend to your server proxy (e.g. /api/print) to avoid CORS.');
-      }
-
-      const resp = await fetch(printWebhook, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(orderData)
-      });
-
-      // If the request itself failed (non-2xx) treat as an error and do not advance
-      if (!resp.ok) {
-        // try to get body for debugging
-        let bodyText = '';
-        try { bodyText = await resp.text(); } catch (e) { /* noop */ }
-        console.error('Print webhook returned non-OK:', resp.status, bodyText);
-        toast({
-          title: 'Falha ao encaminhar para impressão',
-          description: `A impressão não pôde ser acionada (status ${resp.status}). Tente novamente ou contate a pizzaria.`,
-          variant: 'destructive'
+      // Use server-side proxy to forward order to configured print webhook.
+      // This avoids CORS issues because the browser posts to the same origin (/api/print-order)
+      // and the server forwards the body to PRINT_WEBHOOK_URL.
+      try {
+        const proxyResp = await fetch('/api/print-order', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(orderData)
         });
-        return; // do not show success popup
-      }
 
-      // If server responded OK, try to parse JSON and check for proxy-level errors
-      let parsed: any = null;
-      const contentType = resp.headers.get('content-type') || '';
-      if (contentType.includes('application/json')) {
-        try { parsed = await resp.json(); } catch (e) { parsed = null; }
-      } else {
-        // non-JSON response is acceptable; leave parsed null
-      }
+        if (!proxyResp.ok) {
+          let bodyText = '';
+          try { bodyText = await proxyResp.text(); } catch (e) { /* noop */ }
+          console.error('Print proxy returned non-OK:', proxyResp.status, bodyText);
+          toast({
+            title: 'Falha ao encaminhar para impressão',
+            description: `A impressão não pôde ser acionada (status ${proxyResp.status}). Tente novamente ou contate a pizzaria.`,
+            variant: 'destructive'
+          });
+          return;
+        }
 
-      // If the proxied endpoint explicitly returned an error shape, treat as failure
-      if (parsed && parsed.error) {
-        console.error('Print proxy returned error body:', parsed);
-        toast({
-          title: 'Erro na impressão',
-          description: parsed.detail || parsed.error || 'Resposta inválida do serviço de impressão.',
-          variant: 'destructive'
-        });
+        // If server sent JSON with an error shape, treat it as failure
+        let parsedProxy: any = null;
+        const ct = proxyResp.headers.get('content-type') || '';
+        if (ct.includes('application/json')) {
+          try { parsedProxy = await proxyResp.json(); } catch (e) { parsedProxy = null; }
+        }
+        if (parsedProxy && parsedProxy.error) {
+          console.error('Print proxy returned error body:', parsedProxy);
+          toast({ title: 'Erro na impressão', description: parsedProxy.detail || parsedProxy.error, variant: 'destructive' });
+          return;
+        }
+      } catch (e) {
+        console.error('Erro ao chamar proxy de impressão:', e);
+        toast({ title: 'Erro ao enviar pedido', description: 'Tente novamente ou entre em contato conosco.', variant: 'destructive' });
         return;
       }
 
