@@ -130,13 +130,13 @@ const PizzaCustomizationModal = ({ isOpen, onClose, pizza, onAddToCart, preSelec
     if (isOpen) {
       setStepIndex(0);
       // Show the scroll hint when the wizard contains the 'adicionais' step.
-      // This ensures the hint appears for normal pizzas on the 'adicionais' step.
       const hasAdicionais = steps.includes('adicionais');
       setShowScrollHint(!!hasAdicionais);
-      // reset drink quantity unless a drink is already selected
-      if (selectedDrink === 'sem-bebida') setDrinkQuantity(0);
+      // Initialize drink quantity when opening the modal
+      setDrinkQuantity(0);
     }
-  }, [isOpen, steps, isModaCliente, selectedDrink]);
+    // Intentionally only run on open/steps/isModaCliente changes — do not listen to selectedDrink
+  }, [isOpen, steps, isModaCliente]);
 
   // If the user closes the modal mid-flow, clear all local selections so reopening starts fresh
   React.useEffect(() => {
@@ -181,11 +181,17 @@ const PizzaCustomizationModal = ({ isOpen, onClose, pizza, onAddToCart, preSelec
   }, [isOpen, pizza, preSelectedPizza]);
 
   // Se modal estiver em contexto de combo, force tamanho 'grande' quando abrir.
+  const openedRef = useRef(false);
   React.useEffect(() => {
-    if (isOpen && allowedPizzaCategories?.includes('pizzas-promocionais')) {
-      if (size !== 'grande') setSize('grande');
+    if (isOpen && !openedRef.current) {
+      // first time opening the modal
+      if (allowedPizzaCategories?.includes('pizzas-promocionais')) {
+        if (size !== 'grande') setSize('grande');
+      }
+      openedRef.current = true;
     }
-  }, [isOpen, allowedPizzaCategories]);
+    if (!isOpen) openedRef.current = false;
+  }, [isOpen, allowedPizzaCategories, size]);
 
   if (!pizza) return null;
   // Filtra apenas pizzas para os selects de sabores, considerando categorias permitidas
