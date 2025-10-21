@@ -146,13 +146,19 @@ const PizzaCustomizationModal = ({ isOpen, onClose, pizza, onAddToCart, preSelec
   }, [isOpen]);
 
   const scrollToSection = (el: HTMLElement | null) => {
-    if (!el) return;
-    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    el.classList.add('ring-2', 'ring-offset-2', 'ring-brand-yellow/60');
-    clearTimeout(highlightRef.current);
-    highlightRef.current = setTimeout(() => {
-      el.classList.remove('ring-2', 'ring-offset-2', 'ring-brand-yellow/60');
-    }, 1200);
+    try {
+      if (!el || !(el as any).isConnected) return;
+      // scroll into view defensively
+      try { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) { /* ignore scroll errors */ }
+      try { el.classList.add('ring-2', 'ring-offset-2', 'ring-brand-yellow/60'); } catch (e) { /* ignore class errors */ }
+      try { clearTimeout(highlightRef.current); } catch (e) { /* ignore */ }
+      highlightRef.current = setTimeout(() => {
+        try { if ((el as any).isConnected) el.classList.remove('ring-2', 'ring-offset-2', 'ring-brand-yellow/60'); } catch (e) { /* ignore */ }
+      }, 1200);
+    } catch (err) {
+      // Swallow any unexpected DOM errors on fragile WebViews
+      console.warn('scrollToSection failed defensively:', err);
+    }
   };
 
   useEffect(() => {
