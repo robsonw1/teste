@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -92,10 +92,6 @@ const HalfPizzaModal = ({ isOpen, onClose, pizzas, onAddToCart, preSelectedFlavo
       setSelectedFlavor2(null);
       setSelectedDrink(combo?.drinkOptions?.[0] || 'sem-bebida');
     }
-    return () => {
-      setIsClosing(false);
-      setIsProcessing(false);
-    };
   }, [isOpen]);
 
   const isComboFamilia = combo?.pizzaCount === 2;
@@ -223,34 +219,18 @@ const HalfPizzaModal = ({ isOpen, onClose, pizzas, onAddToCart, preSelectedFlavo
     }
   };
 
-  const [isClosing, setIsClosing] = useState(false);
-  const [isProcessing, setIsProcessing] = useState(false);
-
-  const handleClose = useCallback(() => {
-    if (isClosing) return;
-    setIsClosing(true);
-    setTimeout(() => {
-      try { onClose(); } catch (e) {}
-      setIsClosing(false);
-    }, 50);
-  }, [isClosing, onClose]);
+  const handleClose = () => {
+    try { onClose(); } catch (e) {}
+  };
 
   const handleConfirm = async () => {
-    if (isProcessing) return;
-    setIsProcessing(true);
-    try {
-      const ok = await Promise.resolve(handleAddToCart());
-      requestAnimationFrame(() => {
-        if (ok) handleClose();
-      });
-    } finally {
-      setTimeout(() => setIsProcessing(false), 100);
-    }
+    const ok = await Promise.resolve(handleAddToCart());
+    if (ok) setTimeout(() => { try { onClose(); } catch(e) {} }, 0);
   };
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent open={isOpen} className="max-w-4xl max-h-[90vh]">
+      <DialogContent className="max-w-4xl max-h-[90vh]">
         <div ref={contentRef} className="max-h-[90vh] overflow-y-auto p-4 relative">
           <ScrollHint show={showScrollHint} />
           <DialogHeader>
@@ -484,13 +464,13 @@ const HalfPizzaModal = ({ isOpen, onClose, pizzas, onAddToCart, preSelectedFlavo
           </Button>
           <Button 
             onClick={handleConfirm}
-            disabled={!selectedFlavor1 || !selectedFlavor2 || (isComboContext && !selectedDrink) || isProcessing}
+            disabled={!selectedFlavor1 || !selectedFlavor2 || (isComboContext && !selectedDrink)}
             className="flex-1 bg-gradient-primary"
           >
-            {isProcessing ? 'Processando...' : (isComboContext 
+            {isComboContext 
               ? `Adicionar ao Carrinho - R$ ${combo?.price.grande.toFixed(2).replace('.', ',')}` 
               : `Adicionar ao Carrinho - R$ ${calculatePrice().toFixed(2).replace('.', ',')}`
-            )}
+            }
           </Button>
         </div>
         <div className="pt-4">
