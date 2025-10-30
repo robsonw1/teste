@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -105,8 +105,7 @@ const ComboCustomizationModal = ({ isOpen, onClose, combo, onAddToCart }: ComboC
       setObservacoes('');
     }
     return () => {
-      setIsClosing(false);
-      setIsProcessing(false);
+      // noop cleanup to avoid touching transient flags during unmount
     };
   }, [isOpen]);
 
@@ -286,28 +285,20 @@ const ComboCustomizationModal = ({ isOpen, onClose, combo, onAddToCart }: ComboC
     }
   };
 
-  const [isClosing, setIsClosing] = useState(false);
-  const [isProcessing, setIsProcessing] = useState(false);
-
-  const handleClose = useCallback(() => {
-    if (isClosing) return;
-    setIsClosing(true);
+  const handleClose = () => {
+    // defer close to avoid synchronous teardown races in some environments
     setTimeout(() => {
       try { onClose(); } catch (e) {}
-      setIsClosing(false);
-    }, 50);
-  }, [isClosing, onClose]);
+    }, 0);
+  };
 
   const handleConfirm = async () => {
-    if (isProcessing) return;
-    setIsProcessing(true);
-    try {
-      const ok = await Promise.resolve(handleAddToCart());
-      requestAnimationFrame(() => {
-        if (ok) handleClose();
-      });
-    } finally {
-      setTimeout(() => setIsProcessing(false), 100);
+    const ok = await Promise.resolve(handleAddToCart());
+    if (ok) {
+      // defer close slightly to let UI settle
+      setTimeout(() => {
+        try { onClose(); } catch (e) {}
+      }, 0);
     }
   };
 
@@ -605,12 +596,11 @@ const ComboCustomizationModal = ({ isOpen, onClose, combo, onAddToCart }: ComboC
           <Button variant="outline" onClick={handleClose} className="flex-1">
             Cancelar
           </Button>
-          <Button 
+          <Button
             onClick={handleConfirm}
             className="flex-1 bg-gradient-primary"
-            disabled={isProcessing}
           >
-            {isProcessing ? 'Processando...' : `Adicionar ao Carrinho - R$ ${calculateTotalPrice().toFixed(2).replace('.', ',')}`}
+            {`Adicionar ao Carrinho - R$ ${calculateTotalPrice().toFixed(2).replace('.', ',')}`}
           </Button>
         </div>
         <div className="pt-4">
