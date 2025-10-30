@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import * as React from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -144,8 +144,7 @@ const PizzaCustomizationModal = ({ isOpen, onClose, pizza, onAddToCart, preSelec
       resetAll();
     }
     return () => {
-      setIsClosing(false);
-      setIsProcessing(false);
+      // noop cleanup — avoid touching transient flags that may not exist
     };
   }, [isOpen]);
 
@@ -437,39 +436,25 @@ const PizzaCustomizationModal = ({ isOpen, onClose, pizza, onAddToCart, preSelec
     }
   };
 
-  // Debounce/guard for closing the dialog and prevent races with animations
-  const [isClosing, setIsClosing] = useState(false);
-  const [isProcessing, setIsProcessing] = useState(false);
+  // Simple close and confirm handlers (avoid complex guards that can create
+  // initialization / circular import issues). Close is delegated to parent.
+  const handleClose = () => {
+    try { onClose(); } catch (e) { /* swallow */ }
+  };
 
-  const handleClose = useCallback(() => {
-    if (isClosing) return;
-    setIsClosing(true);
-    // small delay to ensure animations/state transitions settle
-    setTimeout(() => {
-      try { onClose(); } catch (e) { /* swallow */ }
-      setIsClosing(false);
-    }, 50);
-  }, [isClosing, onClose]);
-
-  // handleConfirm wraps performAddToCart with processing guard and closes on next frame
-  const handleConfirm = useCallback(async () => {
-    if (isProcessing) return;
-    setIsProcessing(true);
-    try {
-      const ok = await Promise.resolve(performAddToCart());
-      // Wait a frame to allow DOM updates to flush before closing
-      requestAnimationFrame(() => {
-        if (ok) handleClose();
-      });
-    } finally {
-      // small timeout to avoid immediate re-entrancy
-      setTimeout(() => setIsProcessing(false), 100);
+  const handleConfirm = async () => {
+    const ok = await Promise.resolve(performAddToCart());
+    if (ok) {
+      // allow React updates to flush before closing
+      setTimeout(() => {
+        try { onClose(); } catch (e) { /* swallow */ }
+      }, 0);
     }
-  }, [isProcessing, performAddToCart, handleClose]);
+  };
 
   return (
       <Dialog open={isOpen} onOpenChange={handleClose}>
-        <DialogContent open={isOpen} className="max-w-2xl max-h-[90vh]">
+        <DialogContent className="max-w-2xl max-h-[90vh]">
           <div ref={contentRef} className="max-h-[90vh] overflow-y-auto p-4 relative">
             {/* Scroll hint overlay: mostra apenas na etapa 'adicionais' */}
             <ScrollHint show={steps[stepIndex] === 'adicionais' && showScrollHint} />
@@ -773,13 +758,7 @@ const PizzaCustomizationModal = ({ isOpen, onClose, pizza, onAddToCart, preSelec
               Próximo
             </Button>
           ) : (
-            <Button 
-              onClick={handleConfirm}
-              className="bg-gradient-primary"
-              disabled={isProcessing}
-            >
-              {isProcessing ? 'Processando...' : 'Adicionar ao Carrinho'}
-            </Button>
+            <Button onClick={handleConfirm} className="bg-gradient-primary">Adicionar ao Carrinho</Button>
           )}
         </div>
         <div className="pt-4">
