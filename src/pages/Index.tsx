@@ -181,10 +181,7 @@ const Index = () => {
           </p>
           <div className="flex flex-wrap justify-center gap-4 text-sm">
             <Badge variant="secondary" className="bg-white/20 text-white border-white/30">
-              🚀 Entrega em 30-45min
-            </Badge>
-            <Badge variant="secondary" className="bg-white/20 text-white border-white/30">
-              🔥 Forno a lenha
+              🚀 Entrega em 50-60min
             </Badge>
             <Badge variant="secondary" className="bg-white/20 text-white border-white/30">
               ⭐ Avaliação 4.8/5
