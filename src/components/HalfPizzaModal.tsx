@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -84,6 +84,19 @@ const HalfPizzaModal = ({ isOpen, onClose, pizzas, onAddToCart, preSelectedFlavo
       }
     }
   }, [isOpen, combo]);
+
+  // Reset/cleanup when modal closes or unmounts
+  useEffect(() => {
+    if (!isOpen) {
+      setSelectedFlavor1(preSelectedFlavor || null);
+      setSelectedFlavor2(null);
+      setSelectedDrink(combo?.drinkOptions?.[0] || 'sem-bebida');
+    }
+    return () => {
+      setIsClosing(false);
+      setIsProcessing(false);
+    };
+  }, [isOpen]);
 
   const isComboFamilia = combo?.pizzaCount === 2;
   
@@ -191,23 +204,53 @@ const HalfPizzaModal = ({ isOpen, onClose, pizzas, onAddToCart, preSelectedFlavo
       return;
     }
 
-    onAddToCart(productId, 1, productData);
-    
-    toast({
-      title: isComboContext ? "Combo adicionado!" : "Pizza adicionada!",
-      description: `${productName} foi adicionado ao carrinho.`,
-    });
+    // perform add to cart but do not close here; closing handled by handleConfirm
+    try {
+      onAddToCart(productId, 1, productData);
+      toast({
+        title: isComboContext ? "Combo adicionado!" : "Pizza adicionada!",
+        description: `${productName} foi adicionado ao carrinho.`,
+      });
+      // Reset selections
+      setSelectedFlavor1(preSelectedFlavor || null);
+      setSelectedFlavor2(null);
+      setSelectedDrink(combo?.drinkOptions?.[0] || 'sem-bebida');
+      return true;
+    } catch (err) {
+      console.error('add to cart failed', err);
+      toast({ title: 'Erro', description: 'Não foi possível adicionar ao carrinho.', variant: 'destructive' });
+      return false;
+    }
+  };
 
-    // Reset selections
-    setSelectedFlavor1(preSelectedFlavor || null);
-    setSelectedFlavor2(null);
-    setSelectedDrink(combo?.drinkOptions?.[0] || 'sem-bebida');
-    onClose();
+  const [isClosing, setIsClosing] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+
+  const handleClose = useCallback(() => {
+    if (isClosing) return;
+    setIsClosing(true);
+    setTimeout(() => {
+      try { onClose(); } catch (e) {}
+      setIsClosing(false);
+    }, 50);
+  }, [isClosing, onClose]);
+
+  const handleConfirm = async () => {
+    if (isProcessing) return;
+    setIsProcessing(true);
+    try {
+      const ok = await Promise.resolve(handleAddToCart());
+      requestAnimationFrame(() => {
+        if (ok) handleClose();
+      });
+    } finally {
+      setTimeout(() => setIsProcessing(false), 100);
+    }
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl max-h-[90vh]">
+    <Dialog open={isOpen} onOpenChange={handleClose}>
+      <DialogContent open={isOpen} className="max-w-4xl max-h-[90vh]">
         <div ref={contentRef} className="max-h-[90vh] overflow-y-auto p-4 relative">
           <ScrollHint show={showScrollHint} />
           <DialogHeader>
@@ -436,18 +479,18 @@ const HalfPizzaModal = ({ isOpen, onClose, pizzas, onAddToCart, preSelectedFlavo
         )}
 
         <div className="flex gap-3 pt-4">
-          <Button variant="outline" onClick={onClose} className="flex-1">
+          <Button variant="outline" onClick={handleClose} className="flex-1">
             Cancelar
           </Button>
           <Button 
-            onClick={handleAddToCart}
-            disabled={!selectedFlavor1 || !selectedFlavor2 || (isComboContext && !selectedDrink)}
+            onClick={handleConfirm}
+            disabled={!selectedFlavor1 || !selectedFlavor2 || (isComboContext && !selectedDrink) || isProcessing}
             className="flex-1 bg-gradient-primary"
           >
-            {isComboContext 
+            {isProcessing ? 'Processando...' : (isComboContext 
               ? `Adicionar ao Carrinho - R$ ${combo?.price.grande.toFixed(2).replace('.', ',')}` 
               : `Adicionar ao Carrinho - R$ ${calculatePrice().toFixed(2).replace('.', ',')}`
-            }
+            )}
           </Button>
         </div>
         <div className="pt-4">
