@@ -177,7 +177,7 @@ const Index = () => {
             Forneiro Éden
           </h2>
           <p className="text-xl mb-6 opacity-90">
-            A pizza mais recheada da cidade 🇮🇹
+            A mais recheada da região 🇮🇹
           </p>
           <div className="flex flex-wrap justify-center gap-4 text-sm">
             <Badge variant="secondary" className="bg-white/20 text-white border-white/30">
@@ -301,7 +301,7 @@ const Index = () => {
       <footer className="bg-gradient-primary text-white py-8 mt-16">
         <div className="container mx-auto px-4 text-center">
           <h3 className="text-2xl font-bold mb-2">🍕 Forneiro Éden</h3>
-          <p className="mb-4">A pizza mais recheada da cidade 🇮🇹</p>
+          <p className="mb-4">A mais recheada da região 🇮🇹</p>
           <div className="flex flex-wrap justify-center gap-6 text-sm">
             <div>📞 (15) 99779-4656</div>
             <div>📍 Rua Hércules Franceschini, 35 - Éden, Sorocaba - SP</div>
