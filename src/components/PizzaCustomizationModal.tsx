@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import * as React from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -137,6 +137,17 @@ const PizzaCustomizationModal = ({ isOpen, onClose, pizza, onAddToCart, preSelec
     }
     // Intentionally only run on open/steps/isModaCliente changes — do not listen to selectedDrink
   }, [isOpen, steps, isModaCliente]);
+
+  // Reset/cleanup when modal closes or unmounts to avoid stale flags
+  useEffect(() => {
+    if (!isOpen) {
+      resetAll();
+    }
+    return () => {
+      setIsClosing(false);
+      setIsProcessing(false);
+    };
+  }, [isOpen]);
 
   // If the user closes the modal mid-flow, clear all local selections so reopening starts fresh
   React.useEffect(() => {
@@ -347,7 +358,9 @@ const PizzaCustomizationModal = ({ isOpen, onClose, pizza, onAddToCart, preSelec
     }
   };
 
-    const handleAddToCart = () => {
+    // Original add-to-cart implementation renamed to performAddToCart so we can
+    // wrap it with guards (debounce, processing flag) below.
+    const performAddToCart = () => {
     if (pizzaType === 'meia-meia' && (!sabor1 || !sabor2)) {
       toast({
         title: "Selecione os sabores",
@@ -415,17 +428,48 @@ const PizzaCustomizationModal = ({ isOpen, onClose, pizza, onAddToCart, preSelec
       setDrinkQuantity(0);
       setObservacoes('');
       setStepIndex(0);
-      onClose();
+      // Note: do NOT call onClose here; closing is handled by handleConfirm/handleClose
+      return true;
     } catch (err) {
       console.error('add to cart failed', err);
       toast({ title: 'Erro', description: 'Não foi possível adicionar ao carrinho.', variant: 'destructive' });
+      return false;
     }
+  };
 
-    };
+  // Debounce/guard for closing the dialog and prevent races with animations
+  const [isClosing, setIsClosing] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+
+  const handleClose = useCallback(() => {
+    if (isClosing) return;
+    setIsClosing(true);
+    // small delay to ensure animations/state transitions settle
+    setTimeout(() => {
+      try { onClose(); } catch (e) { /* swallow */ }
+      setIsClosing(false);
+    }, 50);
+  }, [isClosing, onClose]);
+
+  // handleConfirm wraps performAddToCart with processing guard and closes on next frame
+  const handleConfirm = useCallback(async () => {
+    if (isProcessing) return;
+    setIsProcessing(true);
+    try {
+      const ok = await Promise.resolve(performAddToCart());
+      // Wait a frame to allow DOM updates to flush before closing
+      requestAnimationFrame(() => {
+        if (ok) handleClose();
+      });
+    } finally {
+      // small timeout to avoid immediate re-entrancy
+      setTimeout(() => setIsProcessing(false), 100);
+    }
+  }, [isProcessing, performAddToCart, handleClose]);
 
   return (
-      <Dialog open={isOpen} onOpenChange={onClose}>
-        <DialogContent className="max-w-2xl max-h-[90vh]">
+      <Dialog open={isOpen} onOpenChange={handleClose}>
+        <DialogContent open={isOpen} className="max-w-2xl max-h-[90vh]">
           <div ref={contentRef} className="max-h-[90vh] overflow-y-auto p-4 relative">
             {/* Scroll hint overlay: mostra apenas na etapa 'adicionais' */}
             <ScrollHint show={steps[stepIndex] === 'adicionais' && showScrollHint} />
@@ -714,8 +758,8 @@ const PizzaCustomizationModal = ({ isOpen, onClose, pizza, onAddToCart, preSelec
         </div>
 
         {/* Wizard Navigation Buttons */}
-        <div className="flex gap-3 pt-4">
-          <Button variant="outline" onClick={onClose} className="">
+          <div className="flex gap-3 pt-4">
+          <Button variant="outline" onClick={handleClose} className="">
             Cancelar
           </Button>
           {stepIndex > 0 && (
@@ -730,10 +774,11 @@ const PizzaCustomizationModal = ({ isOpen, onClose, pizza, onAddToCart, preSelec
             </Button>
           ) : (
             <Button 
-              onClick={handleAddToCart}
+              onClick={handleConfirm}
               className="bg-gradient-primary"
+              disabled={isProcessing}
             >
-              Adicionar ao Carrinho
+              {isProcessing ? 'Processando...' : 'Adicionar ao Carrinho'}
             </Button>
           )}
         </div>
