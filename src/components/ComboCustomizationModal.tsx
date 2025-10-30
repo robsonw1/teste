@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -91,6 +91,24 @@ const ComboCustomizationModal = ({ isOpen, onClose, combo, onAddToCart }: ComboC
       setSelectedDrink(combo.drinkOptions[0]);
     }
   }, [isOpen, combo]);
+
+  // Reset/cleanup when modal closes or unmounts
+  useEffect(() => {
+    if (!isOpen) {
+      setSelectedDrink(combo?.drinkOptions?.[0] || '');
+      setSelectedPizza1('');
+      setSelectedPizza2('');
+      setPizzaType1('inteira');
+      setPizzaType2('inteira');
+      setBorda('borda-requeijao');
+      setAdicionais([]);
+      setObservacoes('');
+    }
+    return () => {
+      setIsClosing(false);
+      setIsProcessing(false);
+    };
+  }, [isOpen]);
 
   if (!combo) return null;
 
@@ -247,25 +265,55 @@ const ComboCustomizationModal = ({ isOpen, onClose, combo, onAddToCart }: ComboC
       }
     }
 
-    onAddToCart(`${combo.id}-${Date.now()}`, 1, productData);
+    try {
+      onAddToCart(`${combo.id}-${Date.now()}`, 1, productData);
+      toast({ title: "Combo adicionado!", description: `${productName} foi adicionado ao carrinho.` });
+      // Reset form
+      setSelectedDrink(combo.drinkOptions?.[0] || '');
+      setSelectedPizza1('');
+      setSelectedPizza2('');
+      setPizzaType1('inteira');
+      setPizzaType2('inteira');
+      setBorda('borda-requeijao');
+      setAdicionais([]);
+      setObservacoes('');
+      // Do not call onClose here; closing is managed by handleConfirm/handleClose
+      return true;
+    } catch (err) {
+      console.error('add to cart failed', err);
+      toast({ title: 'Erro', description: 'Não foi possível adicionar ao carrinho.', variant: 'destructive' });
+      return false;
+    }
+  };
 
-    toast({ title: "Combo adicionado!", description: `${productName} foi adicionado ao carrinho.` });
+  const [isClosing, setIsClosing] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
 
-    // Reset form
-    setSelectedDrink(combo.drinkOptions?.[0] || '');
-    setSelectedPizza1('');
-    setSelectedPizza2('');
-    setPizzaType1('inteira');
-    setPizzaType2('inteira');
-    setBorda('borda-requeijao');
-    setAdicionais([]);
-    setObservacoes('');
-    onClose();
+  const handleClose = useCallback(() => {
+    if (isClosing) return;
+    setIsClosing(true);
+    setTimeout(() => {
+      try { onClose(); } catch (e) {}
+      setIsClosing(false);
+    }, 50);
+  }, [isClosing, onClose]);
+
+  const handleConfirm = async () => {
+    if (isProcessing) return;
+    setIsProcessing(true);
+    try {
+      const ok = await Promise.resolve(handleAddToCart());
+      requestAnimationFrame(() => {
+        if (ok) handleClose();
+      });
+    } finally {
+      setTimeout(() => setIsProcessing(false), 100);
+    }
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[90vh]">
+    <Dialog open={isOpen} onOpenChange={handleClose}>
+      <DialogContent open={isOpen} className="max-w-2xl max-h-[90vh]">
         <div ref={contentRef} className="max-h-[90vh] overflow-y-auto p-4 relative">
           {/* Scroll hint overlay */}
             <ScrollHint show={showScrollHint} />
@@ -554,14 +602,15 @@ const ComboCustomizationModal = ({ isOpen, onClose, combo, onAddToCart }: ComboC
         </div>
 
         <div className="flex gap-3 pt-4">
-          <Button variant="outline" onClick={onClose} className="flex-1">
+          <Button variant="outline" onClick={handleClose} className="flex-1">
             Cancelar
           </Button>
           <Button 
-            onClick={handleAddToCart}
+            onClick={handleConfirm}
             className="flex-1 bg-gradient-primary"
+            disabled={isProcessing}
           >
-            Adicionar ao Carrinho - R$ {calculateTotalPrice().toFixed(2).replace('.', ',')}
+            {isProcessing ? 'Processando...' : `Adicionar ao Carrinho - R$ ${calculateTotalPrice().toFixed(2).replace('.', ',')}`}
           </Button>
         </div>
         <div className="pt-4">
