@@ -1,5 +1,6 @@
 import { Dialog, DialogContent, DialogTitle } from "./ui/dialog"
 import { useEffect, useState } from "react"
+import { copyText } from '@/lib/clipboard'
 import { Button } from "./ui/button"
 import { generatePix, checkPaymentStatus, GeneratePixResult } from '@/api/mercadopago'
 import DevelopedBy from "@/components/DevelopedBy"
@@ -205,55 +206,16 @@ export function PixPaymentModal({ isOpen, onClose, total, orderId, orderData, on
 
   const copyPixCode = async () => {
     try {
-      await navigator.clipboard.writeText(pixCode)
-      alert("Código PIX copiado!")
-    } catch (err) {
-      console.error('Erro ao copiar:', err)
-      // Fallback para dispositivos que não suportam clipboard API
-      const textArea = document.createElement('textarea')
-      textArea.value = pixCode
-      // Try to append/select/copy/remove with defensive guards so mobile WebViews don't throw NotFoundError
-      let appended = false
-      try {
-        if (document && document.body && typeof document.body.appendChild === 'function') {
-          document.body.appendChild(textArea)
-          appended = true
-        }
-        // Only attempt select/execCommand if append was successful
-        if (appended) {
-          try {
-            textArea.focus()
-            textArea.select()
-            document.execCommand('copy')
-          } catch (innerErr) {
-            console.warn('Fallback copy attempt failed (select/execCommand):', innerErr)
-          }
-        }
-      } catch (err) {
-        console.warn('Fallback clipboard copy failed (append):', err)
-      } finally {
-        // Always try to remove the element but guard against exceptions
-        try {
-          const parent = textArea.parentNode as Node | null
-          if (parent && typeof (parent.removeChild) === 'function') {
-            try {
-              parent.removeChild(textArea)
-            } catch (remErr) {
-              // If removeChild fails for some reason, try element.remove()
-              try {
-                if (typeof (textArea as any).remove === 'function') (textArea as any).remove()
-              } catch (remErr2) {
-                console.warn('Failed to remove temporary textarea (silenciado):', remErr2)
-              }
-            }
-          } else if (typeof (textArea as any).remove === 'function') {
-            try { (textArea as any).remove() } catch (remErr3) { /* swallow */ }
-          }
-        } catch (err) {
-          console.warn('Falha ao remover textarea temporário (silenciado):', err)
-        }
+      const ok = await copyText(pixCode)
+      if (ok) {
+        alert('Código PIX copiado!')
+      } else {
+        // best-effort: inform user
+        alert('Não foi possível copiar automaticamente. Segure o código para copiar manualmente.')
       }
-      alert("Código PIX copiado!")
+    } catch (err) {
+      console.error('Erro ao copiar PIX (util):', err)
+      alert('Não foi possível copiar o código PIX.')
     }
   }
 
