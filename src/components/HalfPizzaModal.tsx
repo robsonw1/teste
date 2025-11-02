@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { cn } from "@/lib/utils";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -371,35 +372,48 @@ const HalfPizzaModal = ({ isOpen, onClose, pizzas, onAddToCart, preSelectedFlavo
             </h3>
             
             <div ref={sabor2Ref} className="space-y-3 max-h-96 overflow-y-auto">
-              {pizzas
-                .filter(pizza => pizza.id !== selectedFlavor1?.id) // Remove o sabor já selecionado
-                .map((pizza) => (
-                <Card 
-                  key={pizza.id}
-                  className={`cursor-pointer transition-all ${
-                    selectedFlavor2?.id === pizza.id 
-                      ? 'ring-2 ring-brand-orange bg-brand-orange/5' 
-                      : 'hover:shadow-md'
-                  }`}
-                  onClick={() => { setSelectedFlavor2(pizza); }}
-                >
-                  <CardContent className="p-4">
-                    <div className="flex justify-between items-start">
-                      <div className="flex-1">
-                        <h4 className="font-medium">{pizza.name}</h4>
-                        <p className="text-sm text-muted-foreground line-clamp-2">
-                          {pizza.ingredients?.join(', ')}
-                        </p>
+              {pizzas.map((pizza) => {
+                const isAlreadySelected = selectedFlavor1?.id === pizza.id;
+                return (
+                  <Card
+                    key={pizza.id}
+                    onClick={() => {
+                      if (isAlreadySelected) return;
+                      setSelectedFlavor2(pizza);
+                    }}
+                    className={cn(
+                      `relative cursor-pointer transition-all`,
+                      isAlreadySelected && `opacity-50 cursor-not-allowed`,
+                      !isAlreadySelected && selectedFlavor2?.id === pizza.id && `ring-2 ring-brand-orange bg-brand-orange/5`,
+                      !isAlreadySelected && `hover:shadow-md`
+                    )}
+                  >
+                    {isAlreadySelected && (
+                      <div className="absolute inset-0 bg-gray-900/10 flex items-center justify-center rounded-lg z-10">
+                        <Badge variant="secondary" className="text-xs">
+                          Já selecionado
+                        </Badge>
                       </div>
-                      <div className="text-right ml-4">
-                        <span className="font-bold text-brand-orange">
-                          R$ {pizza.price.grande.toFixed(2).replace('.', ',')}
-                        </span>
+                    )}
+
+                    <CardContent className="p-4">
+                      <div className="flex justify-between items-start">
+                        <div className="flex-1">
+                          <h4 className="font-medium">{pizza.name}</h4>
+                          <p className="text-sm text-muted-foreground line-clamp-2">
+                            {pizza.ingredients?.join(', ')}
+                          </p>
+                        </div>
+                        <div className="text-right ml-4">
+                          <span className="font-bold text-brand-orange">
+                            R$ {pizza.price.grande.toFixed(2).replace('.', ',')}
+                          </span>
+                        </div>
                       </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
+                    </CardContent>
+                  </Card>
+                );
+              })}
             </div>
           </div>
         </div>
