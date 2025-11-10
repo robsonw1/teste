@@ -682,10 +682,10 @@ const PizzaCustomizationModal = ({ isOpen, onClose, pizza, onAddToCart, preSelec
   {/* Step: Adicionais */}
   {steps[stepIndex] === 'adicionais' && (
     <div ref={adicionaisRef} className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-lg font-semibold">Adicionais</h3>
+          <div className="flex items-center gap-4">
+            <h3 className="text-lg font-semibold flex-shrink-0">Adicionais</h3>
             {isModaCliente && (
-              <div className="text-sm text-muted-foreground">{adicionais.length}/{MAX_MODA_ADICIONAIS} selecionados</div>
+              <div className="text-sm text-muted-foreground ml-auto flex-shrink-0">{adicionais.length}/{MAX_MODA_ADICIONAIS} selecionados</div>
             )}
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
